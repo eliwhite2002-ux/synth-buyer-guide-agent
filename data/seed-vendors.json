@@ -1,0 +1,27 @@
+{
+  "extractionRun001": {
+    "title": "Extraction Run 001",
+    "guideType": "First-Time Buyer Guide",
+    "sources": [
+      "Zelex Dolls",
+      "WM Doll",
+      "Irontech Doll",
+      "Tayu Doll"
+    ]
+  },
+  "broaderSourceList": [
+    "Irontech Doll",
+    "SEDOLL",
+    "Zelex Dolls",
+    "Tayu Doll",
+    "The Doll Forum",
+    "WM Doll",
+    "Coeros",
+    "EXDOLL",
+    "Sino-doll",
+    "Gynoid Dolls",
+    "XT DOLL",
+    "JIUSHENGDolls",
+    "Funwestdoll"
+  ]
+}
