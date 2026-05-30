@@ -55,6 +55,9 @@ Use these fixture URLs in Research Studio to exercise the workflow without exter
 
 - `mock://vendor-homepage`
 - `mock://product-model-one`
+- `mock://product-compact-tpe`
+- `mock://product-large-silicone`
+- `mock://product-incomplete`
 - `mock://category-silicone`
 - `mock://article-first-time-buyers`
 - `mock://blocked-access-wall`

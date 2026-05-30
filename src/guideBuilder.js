@@ -99,7 +99,7 @@ function markdownTable(rows) {
 }
 
 function cleanProductCards(state = {}) {
-  return (state.guidePackage?.productCards || []).filter((item) => item && item.sourceUrl && (item.price || item.height || item.weight));
+  return (state.guidePackage?.productCards || []).filter((item) => item && item.sourceUrl && item.price && item.height && item.weight && item.material && item.material !== 'Unknown' && item.recommendationStatus === 'not_recommended');
 }
 
 function productExampleMarkdown(productCards = []) {
@@ -113,6 +113,7 @@ function productExampleMarkdown(productCards = []) {
     `Height: ${item.height || 'needs verification'}`,
     `Weight: ${item.weight || 'needs verification'}`,
     `Material: ${item.material || 'needs verification'}`,
+    `Guide tags: ${item.materialGroup || 'Unknown'}, ${item.sizeClass || 'unknown'}, ${item.weightClass || 'unknown'}`,
     `Status: ${item.reviewStatus || 'needs_review'}, ${item.recommendationStatus || 'not_recommended'} yet`,
     `Buyer-guide use: ${item.buyerFit || 'Real example for discussing first-time buyer fit, storage, handling, and review status.'}`,
     `Source: ${item.sourceUrl}`
@@ -122,13 +123,15 @@ function productExampleMarkdown(productCards = []) {
 function productComparisonRows(productCards = []) {
   if (!productCards.length) return DECISION_ROWS;
   return [
-    ['Product example', 'Price', 'Height', 'Weight', 'Material', 'Guide use / caution'],
+    ['Product example', 'Price', 'Height', 'Weight', 'Material', 'Size', 'Handling', 'Guide use / caution'],
     ...productCards.map((item) => [
       item.productName || 'Unnamed product',
       item.price || item.salePrice || 'verify',
       item.height || 'verify',
       item.weight || 'verify',
       item.material || 'verify',
+      item.sizeClass || 'unknown',
+      item.weightClass || 'unknown',
       item.avoidIf || 'review before recommendation'
     ])
   ];
@@ -167,7 +170,7 @@ function mistakeCardsMarkdown() {
 function canvaVisualPackage(productCards = []) {
   const core = VISUAL_BRIEFS.map(([asset, format, direction]) => `${asset}\nFormat: ${format}\nDirection: ${direction}`).join('\n\n');
   const productBriefs = productCards.length
-    ? productCards.map((item) => `Product example card: ${item.productName}\nSource: ${item.sourceUrl}\nShow: price ${item.price || 'verify'}, height ${item.height || 'verify'}, weight ${item.weight || 'verify'}, material ${item.material || 'verify'}\nBadge: Review only / not recommended yet\nImage candidates: ${item.imageCandidateCount || 0}; rights unknown until approved`).join('\n\n')
+    ? productCards.map((item) => `Product example card: ${item.productName}\nSource: ${item.sourceUrl}\nShow: price ${item.price || 'verify'}, height ${item.height || 'verify'}, weight ${item.weight || 'verify'}, material ${item.material || 'verify'}, size ${item.sizeClass || 'unknown'}, handling ${item.weightClass || 'unknown'}\nBadge: Review only / not recommended yet\nImage candidates: ${item.imageCandidateCount || 0}; image rights: ${item.imageRights || 'unknown'}; approved image URLs: ${(item.approvedImageUrls || []).length}`).join('\n\n')
     : 'Product example cards: waiting for clean product pages with specs. Do not use vendor images until image rights are approved.';
   return `${core}\n\n${productBriefs}`;
 }
@@ -232,6 +235,7 @@ function renderStatCards(state = {}) {
   const cards = [
     ['Evidence Records', guidePackage.evidenceRecordCount || (state.researchRecords || []).length || 0],
     ['Review Product Examples', cleanProductCards(state).length],
+    ['Incomplete Product Cards', guidePackage.incompleteProductCount || 0],
     ['Category Leads Excluded', guidePackage.categoryLeadCount || 0],
     ['Recommendation Status', 'not recommended yet']
   ];
@@ -242,7 +246,7 @@ function renderProductPreview(productCards = []) {
   if (!productCards.length) {
     return '<p class="muted">No clean product examples yet. Use Research Studio to extract a real product page, then return here.</p>';
   }
-  return `<div class="research-grid">${productCards.map((item) => `<article class="research-card"><div class="panel-title"><h4>${escapeHtml(item.productName)}</h4><span class="badge badge-needs_review">review-only</span></div><p><strong>Price:</strong> ${escapeHtml(item.price || item.salePrice || 'verify')}</p><p><strong>Height:</strong> ${escapeHtml(item.height || 'verify')} · <strong>Weight:</strong> ${escapeHtml(item.weight || 'verify')} · <strong>Material:</strong> ${escapeHtml(item.material || 'verify')}</p><p><strong>Status:</strong> ${escapeHtml(item.reviewStatus || 'needs_review')} · ${escapeHtml(item.recommendationStatus || 'not_recommended')}</p><p><strong>Source:</strong> <a href="${escapeHtml(item.sourceUrl)}" target="_blank">${escapeHtml(item.sourceUrl)}</a></p><p>${escapeHtml(item.buyerFit || 'Use as a real product example after review.')}</p></article>`).join('')}</div>`;
+  return `<div class="research-grid">${productCards.map((item) => `<article class="research-card"><div class="panel-title"><h4>${escapeHtml(item.productName)}</h4><span class="badge badge-needs_review">review-only</span></div><p><strong>Price:</strong> ${escapeHtml(item.price || item.salePrice || 'verify')}</p><p><strong>Height:</strong> ${escapeHtml(item.height || 'verify')} · <strong>Weight:</strong> ${escapeHtml(item.weight || 'verify')} · <strong>Material:</strong> ${escapeHtml(item.material || 'verify')}</p><p><strong>Guide tags:</strong> ${escapeHtml(item.materialGroup || 'Unknown')} · ${escapeHtml(item.sizeClass || 'unknown')} · ${escapeHtml(item.weightClass || 'unknown')}</p><p><strong>Approved image URLs:</strong> ${(item.approvedImageUrls || []).length}</p><p><strong>Status:</strong> ${escapeHtml(item.reviewStatus || 'needs_review')} · ${escapeHtml(item.recommendationStatus || 'not_recommended')}</p><p><strong>Source:</strong> <a href="${escapeHtml(item.sourceUrl)}" target="_blank">${escapeHtml(item.sourceUrl)}</a></p><p>${escapeHtml(item.buyerFit || 'Use as a real product example after review.')}</p></article>`).join('')}</div>`;
 }
 
 function renderBuilderPage(layout, state = {}) {
