@@ -1,4 +1,8 @@
+const { getMockFixture } = require('./mockFixtures');
+
 async function extractUrl(targetUrl) {
+  const mockFixture = getMockFixture(targetUrl);
+  if (mockFixture) return mockFixture;
   const startedAt = new Date().toISOString();
   let url;
   try {

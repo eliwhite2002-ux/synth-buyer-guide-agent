@@ -6,7 +6,7 @@
   "type": "commonjs",
   "scripts": {
     "start": "node src/server.js",
-    "test": "node test/issue1.test.js"
+    "test": "node test/issue1.test.js && node test/workflow-enhancements.test.js"
   },
   "keywords": [
     "buyer-guide",

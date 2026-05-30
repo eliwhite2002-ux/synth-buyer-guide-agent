@@ -99,6 +99,7 @@ function renderStudioPage(layout, extractionResult = null) {
         <input name="targetUrl" placeholder="https://example-vendor.com/product-page" required />
         <button class="button primary" type="submit">Extract URL</button>
       </form>
+      <p class="muted">Deterministic fixtures: <code>mock://vendor-homepage</code>, <code>mock://product-model-one</code>, <code>mock://category-silicone</code>, <code>mock://article-first-time-buyers</code>, <code>mock://blocked-access-wall</code>.</p>
       ${extractionResult ? renderExtractionResult(extractionResult) : ''}
     </section>
 

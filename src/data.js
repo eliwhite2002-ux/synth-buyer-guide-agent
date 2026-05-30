@@ -92,7 +92,7 @@ function classifyUrl(sourceUrl) {
 function normalizeLinkType(kind, url) { if (linkTypes.includes(kind)) return kind; if (kind === 'possible_product') return 'likely_product'; if (kind === 'possible_category') return 'likely_category'; return classifyUrl(url).linkType || 'unknown'; }
 function canCreateCandidate(linkType) { return ['likely_product', 'likely_category'].includes(linkType); }
 function shouldFeedDiscovery(linkType) { return linkType !== 'likely_product'; }
-function isProductOutputCandidate(item) { return item.candidateKind === 'product_candidate' && item.productUrl && item.productUrl.includes('/product/') && Boolean(item.price || item.height || item.weight); }
+function isProductOutputCandidate(item) { return item.candidateKind === 'product_candidate' && item.reviewOnly === true && item.recommendationStatus === 'not_recommended' && item.productUrl && item.productUrl.includes('/product/') && Boolean(item.price || item.height || item.weight); }
 
 function candidateBuyerFit(item) {
   const bits = [];
@@ -207,6 +207,24 @@ function updateQueueStatus(queueId, queueStatus) {
 }
 function getQueueItem(queueId) { return loadDatabase().discoveryQueue.find((entry) => entry.id === queueId) || null; }
 
+function updateCandidateReview(candidateId, updates = {}) {
+  const reviewStatuses = ['needs_review', 'approved', 'rejected'];
+  const rightsStatuses = ['unknown', 'vendor_approved', 'affiliate_approved', 'owner_permission', 'public_stock', 'do_not_use'];
+  const db = loadDatabase();
+  const candidate = db.productCandidates.find((item) => item.id === candidateId);
+  if (!candidate) return null;
+  if (reviewStatuses.includes(updates.reviewStatus)) candidate.reviewStatus = updates.reviewStatus;
+  if (rightsStatuses.includes(updates.mediaRights)) candidate.mediaRights = updates.mediaRights;
+  if (rightsStatuses.includes(updates.imageRights)) candidate.imageRights = updates.imageRights;
+  candidate.reviewNotes = String(updates.reviewNotes || '').trim();
+  candidate.reviewOnly = true;
+  candidate.recommendationStatus = 'not_recommended';
+  db.guidePackages = [buildGuidePackage(db)];
+  db.workLogs.push(createWorkLog(candidate.runId, `Updated review-only candidate ${candidate.productName}: review ${candidate.reviewStatus}, media rights ${candidate.mediaRights}, image rights ${candidate.imageRights}.`, 'warning'));
+  saveDatabase(db);
+  return candidate;
+}
+
 function categoryLeadCandidate({ existingCandidate, host, result, sourceUrl, run, source, record, urlClass, blocker }) {
   return {
     id: existingCandidate?.id || makeId('candidate', `${host}-${result.title || 'category'}`),
@@ -234,10 +252,10 @@ function productCandidate({ existingCandidate, host, result, productSpecs, sourc
     sourceId: source?.id || '',
     researchRecordId: record.id,
     vendor: host,
-    productName: mappedSpecs.productName || result.title || '(no readable title)',
     productUrl: sourceUrl,
     category: 'Product page',
     ...mappedSpecs,
+    productName: mappedSpecs.productName || result.title || '(no readable title)',
     ...candidateDefaults(urlClass.linkType),
     bestFor: 'Pending evidence review',
     ownerRisk: blocker || 'Specs and media rights remain unverified.',
@@ -264,7 +282,7 @@ function saveExtractionResult(result) {
   const productSpecs = result.productSpecs || {};
 
   const existingRecord = db.researchRecords.find((record) => canonicalUrl(record.sourceUrl) === sourceUrl);
-  const record = { id: existingRecord?.id || makeId('research', sourceUrl), runId: run.id, sourceId: source?.id || '', sourceUrl, adapter: 'live_fetch', evidenceKind, suggestedLinks, extractedAt, confidence, verificationStatus, blocker, evidence: { title: result.title || '', description: result.description || '', headings: result.headings || [], detectedFields: detected, productSpecs, textSample: result.textSample || '', statusCode: result.statusCode || null } };
+  const record = { id: existingRecord?.id || makeId('research', sourceUrl), runId: run.id, sourceId: source?.id || '', sourceUrl, adapter: result.adapter || 'live_fetch', evidenceKind, suggestedLinks, extractedAt, confidence, verificationStatus, blocker, evidence: { title: result.title || '', description: result.description || '', headings: result.headings || [], detectedFields: detected, productSpecs, textSample: result.textSample || '', statusCode: result.statusCode || null } };
   if (existingRecord) Object.assign(existingRecord, record); else db.researchRecords.push(record);
 
   if (source) {
@@ -308,4 +326,4 @@ function getResearchState() { const db = loadDatabase(); return { researchRecord
 function getDashboard() { const db = loadDatabase(); return { runs: db.extractionRuns, counts: { extractionRuns: db.extractionRuns.length, sources: db.sources.length, productCandidates: db.productCandidates.length, blockedSources: db.sources.filter((source) => source.confidence === 'blocked').length, readyGuideBlocks: db.guideBlocks.filter((block) => block.status === 'ready').length, needsReview: db.sources.filter((source) => source.status === 'needs_review').length + db.productCandidates.filter((candidate) => candidate.reviewStatus === 'needs_review' || candidate.recommendationStatus === 'needs_review').length }, broaderSourceList: db.broaderSourceList, guideTypes: db.guideTypes }; }
 function getRun(runId) { const db = loadDatabase(); const run = db.extractionRuns.find((item) => item.id === runId) || db.extractionRuns[0]; if (!run) return null; return { run, sources: db.sources.filter((source) => source.runId === run.id), workLogs: db.workLogs.filter((log) => log.runId === run.id).sort((a, b) => a.createdAt.localeCompare(b.createdAt)), guideTypes: db.guideTypes }; }
 
-module.exports = { DB_PATH, buildSeedDatabase, canCreateCandidate, classifyUrl, createExtractionRun, ensureDatabase, getDashboard, getQueueItem, getResearchState, getRun, loadDatabase, parseSeedList, saveDatabase, saveExtractionResult, updateQueueStatus };
+module.exports = { DB_PATH, buildSeedDatabase, canCreateCandidate, classifyUrl, createExtractionRun, ensureDatabase, getDashboard, getQueueItem, getResearchState, getRun, loadDatabase, parseSeedList, saveDatabase, saveExtractionResult, updateCandidateReview, updateQueueStatus };

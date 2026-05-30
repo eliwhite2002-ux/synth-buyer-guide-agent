@@ -2,8 +2,8 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { URLSearchParams } = require('url');
-const { createExtractionRun, ensureDatabase, getDashboard, getResearchState, getRun, saveExtractionResult, updateQueueStatus } = require('./data');
-const { renderBuilderPage } = require('./guideBuilder');
+const { createExtractionRun, ensureDatabase, getDashboard, getResearchState, getRun, saveExtractionResult, updateCandidateReview, updateQueueStatus } = require('./data');
+const { exportPublicationPack, renderBuilderPage } = require('./guideBuilder');
 const { renderStudioPage } = require('./guideStudio');
 const { renderResearchPanel } = require('./researchPanel');
 const { extractUrl } = require('./extractor');
@@ -69,6 +69,11 @@ async function handleRequest(request, response) {
     response.end(renderBuilderPage(layout, getResearchState()));
     return;
   }
+  if (request.method === 'GET' && url.pathname === '/builder/export') {
+    response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Disposition': 'attachment; filename="first-time-buyer-guide-publication-pack.json"' });
+    response.end(JSON.stringify(exportPublicationPack(getResearchState()), null, 2));
+    return;
+  }
   if (request.method === 'GET' && url.pathname === '/studio') {
     response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     const page = renderStudioPage(layout, latestExtractionResult);
@@ -86,6 +91,12 @@ async function handleRequest(request, response) {
     const body = await parseBody(request);
     updateQueueStatus(body.get('queueId'), body.get('queueStatus'));
     redirect(response, '/studio#discovery-queue');
+    return;
+  }
+  if (request.method === 'POST' && url.pathname === '/candidate-review') {
+    const body = await parseBody(request);
+    updateCandidateReview(body.get('candidateId'), { reviewStatus: body.get('reviewStatus'), mediaRights: body.get('mediaRights'), imageRights: body.get('imageRights'), reviewNotes: body.get('reviewNotes') });
+    redirect(response, '/studio#candidate-cards');
     return;
   }
   if (request.method === 'GET' && url.pathname === '/runs/new') {

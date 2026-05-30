@@ -205,6 +205,24 @@ function publicationChecklistMarkdown(state = {}) {
   ].join('\n');
 }
 
+function exportPublicationPack(state = {}) {
+  const productCards = cleanProductCards(state);
+  return {
+    guideTitle: GUIDE_TITLE,
+    generatedAt: new Date().toISOString(),
+    publicationStatus: 'needs_review',
+    recommendationStatus: 'not_recommended',
+    articleMarkdown: fullArticleMarkdown(state),
+    productExampleCards: productCards,
+    comparisonTableMarkdown: markdownTable(productComparisonRows(productCards)),
+    canvaBriefs: canvaVisualPackage(productCards),
+    shortVideoHooks: shortVideoPackMarkdown(),
+    buyerChecklist: BUYER_CHECKLIST,
+    sourceEvidenceList: sourceEvidenceMarkdown(state),
+    publicationChecklist: publicationChecklistMarkdown(state)
+  };
+}
+
 function outputBlock(id, title, content) {
   return `<article class="output-block"><div class="panel-title"><h3>${escapeHtml(title)}</h3><button class="copy-button" type="button" data-copy-target="${escapeHtml(id)}">Copy</button></div><pre id="${escapeHtml(id)}" tabindex="0">${escapeHtml(content)}</pre></article>`;
 }
@@ -247,6 +265,7 @@ function renderBuilderPage(layout, state = {}) {
       </div>
       <div class="stacked-actions">
         <a class="button primary" href="#article-markdown-output">Copy article draft</a>
+        <a class="button" href="/builder/export">Download publication JSON</a>
         <a class="button" href="/studio">Open Research Studio</a>
       </div>
     </section>
@@ -281,4 +300,4 @@ function renderBuilderPage(layout, state = {}) {
   `);
 }
 
-module.exports = { cleanProductCards, fullArticleMarkdown, markdownTable, productExampleMarkdown, renderBuilderPage };
+module.exports = { cleanProductCards, exportPublicationPack, fullArticleMarkdown, markdownTable, productExampleMarkdown, renderBuilderPage };
