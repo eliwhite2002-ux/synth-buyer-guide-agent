@@ -44,7 +44,12 @@ function buildSeedDatabase() {
   });
 }
 
-function ensureDatabase() { if (!fs.existsSync(DB_PATH)) { fs.mkdirSync(path.dirname(DB_PATH), { recursive: true }); fs.writeFileSync(DB_PATH, JSON.stringify(buildSeedDatabase(), null, 2)); } }
+function ensureDatabase() {
+  if (!fs.existsSync(DB_PATH)) {
+    fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+    fs.writeFileSync(DB_PATH, JSON.stringify(buildSeedDatabase(), null, 2));
+  }
+}
 function loadDatabase() { ensureDatabase(); return normalizeDatabase(JSON.parse(fs.readFileSync(DB_PATH, 'utf8'))); }
 function saveDatabase(db) { fs.mkdirSync(path.dirname(DB_PATH), { recursive: true }); fs.writeFileSync(DB_PATH, JSON.stringify(normalizeDatabase(db), null, 2)); }
 
@@ -82,16 +87,17 @@ function classifyUrl(sourceUrl) {
     const url = new URL(sourceUrl);
     const pathName = url.pathname.toLowerCase().replace(/\/$/, '');
     const segments = pathName.split('/').filter(Boolean);
-    const productSignals = ['product', 'products', 'shop', 'collections', 'collection', 'item', 'model', 'doll', 'body'];
-    const categorySignals = ['shop', 'collections', 'collection', 'category', 'categories'];
+    const text = `${pathName} ${segments.join(' ')}`;
+    const productSignals = ['product', 'products', 'item', 'model', 'doll', 'body'];
+    const categorySignals = ['shop', 'product-category', 'collections', 'collection', 'category', 'categories'];
     const supportSignals = ['about', 'contact', 'faq', 'shipping', 'returns', 'return', 'warranty', 'care', 'privacy', 'terms', 'support'];
-    const articleSignals = ['blog', 'news', 'guide', 'article'];
+    const articleSignals = ['blog', 'news', 'guide', 'article', 'overview', 'top-features', 'features', 'tutorial', 'tutorials', 'factory-videos', 'videos', 'pov', 'feedback'];
     const isHomepage = segments.length === 0;
     const hasSupportSignal = segments.some((segment) => supportSignals.includes(segment));
-    const hasArticleSignal = segments.some((segment) => articleSignals.includes(segment));
-    const hasCategorySignal = segments.some((segment) => categorySignals.includes(segment));
+    const hasArticleSignal = articleSignals.some((signal) => text.includes(signal));
+    const hasCategorySignal = categorySignals.some((signal) => text.includes(signal));
     const hasProductSignal = segments.some((segment) => productSignals.includes(segment));
-    const isLikelyProduct = !isHomepage && !hasSupportSignal && !hasArticleSignal && (hasProductSignal || segments.length >= 2);
+    const isLikelyProduct = !isHomepage && !hasSupportSignal && !hasArticleSignal && !hasCategorySignal && (hasProductSignal || segments.length >= 2);
     let linkType = 'unknown';
     if (isHomepage) linkType = 'vendor_source';
     else if (hasSupportSignal) linkType = 'support_policy';
@@ -111,6 +117,7 @@ function normalizeLinkType(kind, url) {
 }
 
 function canCreateCandidate(linkType) { return ['likely_product', 'likely_category'].includes(linkType); }
+function shouldFeedDiscovery(linkType) { return linkType !== 'likely_product'; }
 
 function buildGuidePackage(db) {
   const records = db.researchRecords;
@@ -207,7 +214,7 @@ function saveExtractionResult(result) {
     source.nextAction = readableEvidence ? (canCreateCandidate(urlClass.linkType) ? 'Review product/category evidence, verify specs, and classify media rights.' : 'Vendor/source page captured. Next: process Discovery Queue links.') : 'Try a reader/browser extraction or a specific product/category URL; this page did not expose readable evidence.';
   }
 
-  if (readableEvidence && !canCreateCandidate(urlClass.linkType)) {
+  if (readableEvidence && shouldFeedDiscovery(urlClass.linkType)) {
     upsertDiscoveryQueueItems(db, { runId: run.id, sourceId: source?.id || '', parentResearchRecordId: record.id, parentUrl: sourceUrl, suggestedLinks });
   }
 
