@@ -1,0 +1,22 @@
+{
+  "name": "synth-buyer-guide-agent",
+  "version": "0.1.0",
+  "description": "Internal editorial workflow app for Synth Companions buyer-guide extraction runs.",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node test/issue1.test.js"
+  },
+  "keywords": [
+    "buyer-guide",
+    "editorial-workflow",
+    "synth-companions"
+  ],
+  "author": "Synth Companions",
+  "license": "UNLICENSED",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  }
+}
