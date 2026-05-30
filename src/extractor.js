@@ -1,4 +1,9 @@
+const { getMockFixture } = require('./mockFixtures');
+const { isUsableImageUrl, sanitizeImageCandidates } = require('./candidateSpecs');
+
 async function extractUrl(targetUrl) {
+  const mockFixture = getMockFixture(targetUrl);
+  if (mockFixture) return mockFixture;
   const startedAt = new Date().toISOString();
   let url;
   try {
@@ -198,7 +203,7 @@ function extractProductSpecs({ html, cleanText, title, description, targetUrl })
     bodyWeight: extractLabeledValue(specsText, ['Body weight', 'Weight']),
     height: extractLabeledValue(specsText, ['Height']),
     material: extractMaterial(cleanText, title, description),
-    imageCandidates: extractImageCandidates(html, targetUrl).slice(0, 8)
+    imageCandidates: sanitizeImageCandidates(extractImageCandidates(html, targetUrl), targetUrl).slice(0, 8)
   };
   return Object.fromEntries(Object.entries(spec).filter(([, value]) => Array.isArray(value) ? value.length : Boolean(value)));
 }
@@ -266,16 +271,19 @@ function extractImageCandidates(html, targetUrl) {
     if (!raw) return;
     try {
       const absolute = new URL(raw, targetUrl).toString();
-      if (!/^https?:/i.test(absolute)) return;
-      if (/logo|icon|avatar|sprite|placeholder|data:image/i.test(absolute)) return;
+      if (!isUsableImageUrl(absolute, targetUrl)) return;
       if (!candidates.some((item) => item.url === absolute)) candidates.push({ url: absolute, label });
     } catch {}
   };
-  for (const match of String(html || '').matchAll(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/gi)) add(match[1], 'og:image');
+  for (const match of String(html || '').matchAll(/<meta[^>]+(?:property|name)=["'](?:og:image|twitter:image)["'][^>]+content=["']([^"']+)["']/gi)) add(match[1], 'social preview image');
+  for (const match of String(html || '').matchAll(/<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["'](?:og:image|twitter:image)["']/gi)) add(match[1], 'social preview image');
   for (const match of String(html || '').matchAll(/<img[^>]+(?:src|data-src|data-large_image)=["']([^"']+)["'][^>]*>/gi)) {
     const tag = match[0];
     const alt = matchFirst(tag, /alt=["']([^"']*)["']/i);
     add(match[1], alt || 'product image');
+  }
+  for (const match of String(html || '').matchAll(/<(?:img|source)[^>]+srcset=["']([^"']+)["'][^>]*>/gi)) {
+    for (const src of match[1].split(',').map((item) => item.trim().split(/\s+/)[0])) add(src, 'responsive product image');
   }
   return candidates;
 }
@@ -288,4 +296,4 @@ function estimateUsefulness(lowerText) {
   return 'low';
 }
 
-module.exports = { extractUrl, detectBuyerGuideFields, extractSuggestedLinks, extractProductSpecs };
+module.exports = { extractUrl, detectBuyerGuideFields, extractImageCandidates, extractSuggestedLinks, extractProductSpecs };

@@ -58,6 +58,7 @@ function canonicalUrl(value) {
   }
 }
 function hostFromUrl(value) { try { return new URL(value).hostname.replace(/^www\./, ''); } catch { return 'unknown source'; } }
+function vendorKey(value) { return String(value || '').toLowerCase().replace(/dolls?/g, '').replace(/[^a-z0-9]/g, ''); }
 function positiveDetectedFields(fields = {}) { return Object.entries(fields).filter(([, value]) => value === true).map(([key]) => key); }
 function hasReadableEvidence(result) { const title = String(result.title || '').trim(); const description = String(result.description || '').trim(); const textSample = String(result.textSample || '').trim(); const headings = Array.isArray(result.headings) ? result.headings.filter(Boolean) : []; return Boolean(title || description || textSample || headings.length || positiveDetectedFields(result.detectedFields || {}).length); }
 
@@ -92,7 +93,7 @@ function classifyUrl(sourceUrl) {
 function normalizeLinkType(kind, url) { if (linkTypes.includes(kind)) return kind; if (kind === 'possible_product') return 'likely_product'; if (kind === 'possible_category') return 'likely_category'; return classifyUrl(url).linkType || 'unknown'; }
 function canCreateCandidate(linkType) { return ['likely_product', 'likely_category'].includes(linkType); }
 function shouldFeedDiscovery(linkType) { return linkType !== 'likely_product'; }
-function isProductOutputCandidate(item) { return item.candidateKind === 'product_candidate' && item.productUrl && item.productUrl.includes('/product/') && Boolean(item.price || item.height || item.weight); }
+function isProductOutputCandidate(item) { return item.candidateKind === 'product_candidate' && item.reviewOnly === true && item.recommendationStatus === 'not_recommended' && classifyUrl(item.productUrl).linkType === 'likely_product' && item.guideReadiness === 'core_specs_ready'; }
 
 function candidateBuyerFit(item) {
   const bits = [];
@@ -118,6 +119,7 @@ function buildGuidePackage(db) {
   const candidates = db.productCandidates;
   const productOutputCandidates = candidates.filter(isProductOutputCandidate);
   const categoryLeads = candidates.filter((item) => item.candidateKind === 'category_candidate');
+  const incompleteProductCandidates = candidates.filter((item) => item.candidateKind === 'product_candidate' && !isProductOutputCandidate(item));
   const productCards = productOutputCandidates.map((item) => ({
     vendor: item.vendor,
     productName: item.productName,
@@ -132,7 +134,12 @@ function buildGuidePackage(db) {
     body: item.body || '',
     head: item.head || '',
     collection: item.collection || '',
+    materialGroup: item.materialGroup || 'Unknown',
+    sizeClass: item.sizeClass || 'unknown',
+    weightClass: item.weightClass || 'unknown',
     imageCandidateCount: (item.imageCandidates || []).length,
+    imageCandidates: item.imageCandidates || [],
+    approvedImageUrls: ['vendor_approved', 'affiliate_approved', 'owner_permission', 'public_stock'].includes(item.imageRights) ? (item.imageCandidates || []).map((image) => image.url) : [],
     recommendationStatus: item.recommendationStatus,
     reviewStatus: item.reviewStatus,
     mediaRights: item.mediaRights,
@@ -147,17 +154,27 @@ function buildGuidePackage(db) {
     evidenceRecordCount: records.length,
     candidateCount: candidates.length,
     productOutputCount: productCards.length,
+    incompleteProductCount: incompleteProductCandidates.length,
     categoryLeadCount: categoryLeads.length,
-    articleUpdate: `${records.length} saved extraction record${records.length === 1 ? '' : 's'}, ${productCards.length} clean product output card${productCards.length === 1 ? '' : 's'}, and ${categoryLeads.length} category/discovery lead${categoryLeads.length === 1 ? '' : 's'} are available. Verify specs and media rights before publication.`,
-    comparisonRows: productCards.map((item) => ({ vendor: item.vendor, productName: item.productName, sourceUrl: item.sourceUrl, price: item.price, height: item.height, weight: item.weight, material: item.material, status: item.recommendationStatus })),
+    articleUpdate: `${records.length} saved extraction record${records.length === 1 ? '' : 's'}, ${productCards.length} guide-ready product output card${productCards.length === 1 ? '' : 's'}, ${incompleteProductCandidates.length} product candidate${incompleteProductCandidates.length === 1 ? '' : 's'} missing core specs, and ${categoryLeads.length} category/discovery lead${categoryLeads.length === 1 ? '' : 's'} are available. Verify specs and media rights before publication.`,
+    comparisonRows: productCards.map((item) => ({ vendor: item.vendor, productName: item.productName, sourceUrl: item.sourceUrl, price: item.price, height: item.height, weight: item.weight, material: item.material, materialGroup: item.materialGroup, sizeClass: item.sizeClass, weightClass: item.weightClass, status: item.recommendationStatus })),
     productCards,
     categoryLeads: categoryLeads.map((item) => ({ vendor: item.vendor, title: item.productName, sourceUrl: item.productUrl, status: item.recommendationStatus })),
     articleInsert: productCards.map((item) => `- ${item.productName}: ${item.price || 'price needs verification'}, ${item.height || 'height needs verification'}, ${item.weight || 'weight needs verification'}, ${item.material || 'material needs verification'}. Source: ${item.sourceUrl}. Status: ${item.recommendationStatus}; human review required before publication.`).join('\n'),
-    canvaBrief: productCards.map((item) => `Product card visual: ${item.productName}\nUse source URL: ${item.sourceUrl}\nShow: price ${item.price || 'verify'}, height ${item.height || 'verify'}, weight ${item.weight || 'verify'}, material ${item.material || 'verify'}\nBadge: Review only / not recommended yet\nImage candidates: ${item.imageCandidateCount}; rights unknown until approved`).join('\n\n')
+    canvaBrief: productCards.map((item) => `Product card visual: ${item.productName}\nUse source URL: ${item.sourceUrl}\nShow: price ${item.price || 'verify'}, height ${item.height || 'verify'}, weight ${item.weight || 'verify'}, material ${item.material || 'verify'}, size ${item.sizeClass || 'unknown'}, handling ${item.weightClass || 'unknown'}\nBadge: Review only / not recommended yet\nImage candidates: ${item.imageCandidateCount}; image rights: ${item.imageRights}; approved image URLs: ${item.approvedImageUrls.length}`).join('\n\n')
   };
 }
 
-function findSourceForUrl(db, sourceUrl) { const host = hostFromUrl(sourceUrl).replace(/[^a-z0-9]/gi, '').toLowerCase(); return db.sources.find((source) => host.includes(slugify(source.name).replace(/-/g, ''))) || db.sources[0]; }
+function findQueueItemForUrl(db, sourceUrl) { return db.discoveryQueue.find((item) => canonicalUrl(item.url) === sourceUrl) || null; }
+function findSourceForUrl(db, sourceUrl) {
+  const queueItem = findQueueItemForUrl(db, sourceUrl);
+  if (queueItem?.sourceId) return db.sources.find((source) => source.id === queueItem.sourceId) || null;
+  const host = vendorKey(hostFromUrl(sourceUrl));
+  return db.sources.find((source) => {
+    const key = vendorKey(source.name);
+    return key && host.includes(key);
+  }) || null;
+}
 
 function upsertDiscoveryQueueItems(db, { runId, sourceId, parentResearchRecordId, parentUrl, suggestedLinks }) {
   const created = [];
@@ -170,7 +187,7 @@ function upsertDiscoveryQueueItems(db, { runId, sourceId, parentResearchRecordId
       existing.parentResearchRecordId ||= parentResearchRecordId;
       existing.sourceId ||= sourceId;
       existing.label ||= link.label || url;
-      existing.linkType = existing.linkType || linkType;
+      if (!existing.linkType || existing.linkType === 'unknown') existing.linkType = linkType;
       existing.updatedAt = now();
       continue;
     }
@@ -207,6 +224,24 @@ function updateQueueStatus(queueId, queueStatus) {
 }
 function getQueueItem(queueId) { return loadDatabase().discoveryQueue.find((entry) => entry.id === queueId) || null; }
 
+function updateCandidateReview(candidateId, updates = {}) {
+  const reviewStatuses = ['needs_review', 'approved', 'rejected'];
+  const rightsStatuses = ['unknown', 'vendor_approved', 'affiliate_approved', 'owner_permission', 'public_stock', 'do_not_use'];
+  const db = loadDatabase();
+  const candidate = db.productCandidates.find((item) => item.id === candidateId);
+  if (!candidate) return null;
+  if (reviewStatuses.includes(updates.reviewStatus)) candidate.reviewStatus = updates.reviewStatus;
+  if (rightsStatuses.includes(updates.mediaRights)) candidate.mediaRights = updates.mediaRights;
+  if (rightsStatuses.includes(updates.imageRights)) candidate.imageRights = updates.imageRights;
+  candidate.reviewNotes = String(updates.reviewNotes || '').trim();
+  candidate.reviewOnly = true;
+  candidate.recommendationStatus = 'not_recommended';
+  db.guidePackages = [buildGuidePackage(db)];
+  db.workLogs.push(createWorkLog(candidate.runId, `Updated review-only candidate ${candidate.productName}: review ${candidate.reviewStatus}, media rights ${candidate.mediaRights}, image rights ${candidate.imageRights}.`, 'warning'));
+  saveDatabase(db);
+  return candidate;
+}
+
 function categoryLeadCandidate({ existingCandidate, host, result, sourceUrl, run, source, record, urlClass, blocker }) {
   return {
     id: existingCandidate?.id || makeId('candidate', `${host}-${result.title || 'category'}`),
@@ -220,6 +255,10 @@ function categoryLeadCandidate({ existingCandidate, host, result, sourceUrl, run
     productSpecs: {},
     imageCandidates: [],
     ...candidateDefaults(urlClass.linkType),
+    reviewStatus: existingCandidate?.reviewStatus || 'needs_review',
+    mediaRights: existingCandidate?.mediaRights || 'unknown',
+    imageRights: existingCandidate?.imageRights || 'unknown',
+    reviewNotes: existingCandidate?.reviewNotes || '',
     bestFor: 'Discovery lead only',
     ownerRisk: blocker || 'Category page. Do not use as a product example until a specific product page is extracted.',
     evidenceNotes: 'Category candidate created for discovery. It is not included in product-card JSON, article inserts, or Canva briefs.'
@@ -227,18 +266,22 @@ function categoryLeadCandidate({ existingCandidate, host, result, sourceUrl, run
 }
 
 function productCandidate({ existingCandidate, host, result, productSpecs, sourceUrl, run, source, record, urlClass, blocker }) {
-  const mappedSpecs = normalizeProductSpecs(productSpecs);
+  const mappedSpecs = normalizeProductSpecs(productSpecs, sourceUrl);
   return {
     id: existingCandidate?.id || makeId('candidate', `${host}-${result.title || 'page'}`),
     runId: run.id,
     sourceId: source?.id || '',
     researchRecordId: record.id,
     vendor: host,
-    productName: mappedSpecs.productName || result.title || '(no readable title)',
     productUrl: sourceUrl,
     category: 'Product page',
     ...mappedSpecs,
+    productName: mappedSpecs.productName || result.title || '(no readable title)',
     ...candidateDefaults(urlClass.linkType),
+    reviewStatus: existingCandidate?.reviewStatus || 'needs_review',
+    mediaRights: existingCandidate?.mediaRights || 'unknown',
+    imageRights: existingCandidate?.imageRights || 'unknown',
+    reviewNotes: existingCandidate?.reviewNotes || '',
     bestFor: 'Pending evidence review',
     ownerRisk: blocker || 'Specs and media rights remain unverified.',
     evidenceNotes: 'Product candidate created from saved extraction evidence. Human review required.'
@@ -247,10 +290,11 @@ function productCandidate({ existingCandidate, host, result, productSpecs, sourc
 
 function saveExtractionResult(result) {
   const db = loadDatabase();
-  const run = db.extractionRuns[0];
   const sourceUrl = canonicalUrl(result.targetUrl || '');
   const host = hostFromUrl(sourceUrl);
   const source = findSourceForUrl(db, sourceUrl);
+  const queueItem = findQueueItemForUrl(db, sourceUrl);
+  const run = db.extractionRuns.find((item) => item.id === (queueItem?.runId || source?.runId)) || db.extractionRuns[0];
   const extractedAt = result.completedAt || now();
   const verificationStatus = 'needs_review';
   const readableEvidence = hasReadableEvidence(result);
@@ -259,19 +303,19 @@ function saveExtractionResult(result) {
   const detected = result.detectedFields || {};
   const fields = positiveDetectedFields(detected);
   const urlClass = classifyUrl(sourceUrl);
-  const evidenceKind = canCreateCandidate(urlClass.linkType) ? 'product_candidate' : 'vendor_source';
+  const evidenceKind = urlClass.linkType === 'likely_category' ? 'category_candidate' : (urlClass.linkType === 'likely_product' ? 'product_candidate' : 'vendor_source');
   const suggestedLinks = Array.isArray(result.suggestedLinks) ? result.suggestedLinks : [];
   const productSpecs = result.productSpecs || {};
 
   const existingRecord = db.researchRecords.find((record) => canonicalUrl(record.sourceUrl) === sourceUrl);
-  const record = { id: existingRecord?.id || makeId('research', sourceUrl), runId: run.id, sourceId: source?.id || '', sourceUrl, adapter: 'live_fetch', evidenceKind, suggestedLinks, extractedAt, confidence, verificationStatus, blocker, evidence: { title: result.title || '', description: result.description || '', headings: result.headings || [], detectedFields: detected, productSpecs, textSample: result.textSample || '', statusCode: result.statusCode || null } };
+  const record = { id: existingRecord?.id || makeId('research', sourceUrl), runId: run.id, sourceId: source?.id || '', sourceUrl, adapter: result.adapter || 'live_fetch', evidenceKind, suggestedLinks, extractedAt, confidence, verificationStatus, blocker, evidence: { title: result.title || '', description: result.description || '', headings: result.headings || [], detectedFields: detected, productSpecs, textSample: result.textSample || '', statusCode: result.statusCode || null } };
   if (existingRecord) Object.assign(existingRecord, record); else db.researchRecords.push(record);
 
   if (source) {
-    source.officialUrl = sourceUrl;
+    if (urlClass.isHomepage || !source.officialUrl) source.officialUrl = sourceUrl;
     source.confidence = confidence;
     source.status = 'needs_review';
-    source.importantPages = sourceUrl;
+    source.importantPages = [...new Set([...(source.importantPages || '').split('\n').filter(Boolean), sourceUrl])].join('\n');
     source.extractableFields = fields.join(', ') || 'none detected';
     source.blockers = blocker;
     source.nextAction = readableEvidence ? (canCreateCandidate(urlClass.linkType) ? 'Review product/category evidence, verify specs, and classify media rights.' : 'Vendor/source page captured. Next: process Discovery Queue links.') : 'Try a reader/browser extraction or a specific product/category URL; this page did not expose readable evidence.';
@@ -308,4 +352,4 @@ function getResearchState() { const db = loadDatabase(); return { researchRecord
 function getDashboard() { const db = loadDatabase(); return { runs: db.extractionRuns, counts: { extractionRuns: db.extractionRuns.length, sources: db.sources.length, productCandidates: db.productCandidates.length, blockedSources: db.sources.filter((source) => source.confidence === 'blocked').length, readyGuideBlocks: db.guideBlocks.filter((block) => block.status === 'ready').length, needsReview: db.sources.filter((source) => source.status === 'needs_review').length + db.productCandidates.filter((candidate) => candidate.reviewStatus === 'needs_review' || candidate.recommendationStatus === 'needs_review').length }, broaderSourceList: db.broaderSourceList, guideTypes: db.guideTypes }; }
 function getRun(runId) { const db = loadDatabase(); const run = db.extractionRuns.find((item) => item.id === runId) || db.extractionRuns[0]; if (!run) return null; return { run, sources: db.sources.filter((source) => source.runId === run.id), workLogs: db.workLogs.filter((log) => log.runId === run.id).sort((a, b) => a.createdAt.localeCompare(b.createdAt)), guideTypes: db.guideTypes }; }
 
-module.exports = { DB_PATH, buildSeedDatabase, canCreateCandidate, classifyUrl, createExtractionRun, ensureDatabase, getDashboard, getQueueItem, getResearchState, getRun, loadDatabase, parseSeedList, saveDatabase, saveExtractionResult, updateQueueStatus };
+module.exports = { DB_PATH, buildSeedDatabase, canCreateCandidate, classifyUrl, createExtractionRun, ensureDatabase, getDashboard, getQueueItem, getResearchState, getRun, loadDatabase, parseSeedList, saveDatabase, saveExtractionResult, updateCandidateReview, updateQueueStatus };

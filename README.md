@@ -39,3 +39,27 @@ The app should escalate only narrow access-wall exceptions after logging what it
 ## Status
 
 Initial repo scaffold for Codex-driven build.
+
+## Run locally
+
+```bash
+npm test
+npm start
+```
+
+Open `http://localhost:3000/studio` for research and `http://localhost:3000/builder` for the output composer.
+
+## Deterministic extraction fixtures
+
+Use these fixture URLs in Research Studio to exercise the workflow without external websites:
+
+- `mock://vendor-homepage`
+- `mock://product-model-one`
+- `mock://product-compact-tpe`
+- `mock://product-large-silicone`
+- `mock://product-incomplete`
+- `mock://category-silicone`
+- `mock://article-first-time-buyers`
+- `mock://blocked-access-wall`
+
+Fixture records are visibly labeled `mock_fixture`. Candidate reviews can approve or reject evidence and classify rights, but they intentionally stay review-only and `not_recommended`.
