@@ -139,6 +139,23 @@ function hasReadableEvidence(result) {
   return Boolean(title || description || textSample || headings.length || positives.length);
 }
 
+function classifyUrl(sourceUrl) {
+  try {
+    const url = new URL(sourceUrl);
+    const pathName = url.pathname.toLowerCase().replace(/\/$/, '');
+    const segments = pathName.split('/').filter(Boolean);
+    const productSignals = ['product', 'products', 'shop', 'collections', 'item', 'model', 'doll', 'body'];
+    const nonProductSignals = ['about', 'contact', 'faq', 'shipping', 'returns', 'blog', 'news', 'care', 'privacy', 'terms'];
+    const isHomepage = segments.length === 0;
+    const hasNonProductSignal = segments.some((segment) => nonProductSignals.includes(segment));
+    const hasProductSignal = segments.some((segment) => productSignals.includes(segment));
+    const isLikelyProduct = !isHomepage && !hasNonProductSignal && (hasProductSignal || segments.length >= 2);
+    return { isHomepage, isLikelyProduct };
+  } catch {
+    return { isHomepage: false, isLikelyProduct: false };
+  }
+}
+
 function buildGuidePackage(db) {
   const records = db.researchRecords;
   const candidates = db.productCandidates;
@@ -148,7 +165,7 @@ function buildGuidePackage(db) {
     updatedAt: now(),
     evidenceRecordCount: records.length,
     candidateCount: candidates.length,
-    articleUpdate: `${records.length} saved extraction record${records.length === 1 ? '' : 's'} and ${candidates.length} review-only candidate card${candidates.length === 1 ? '' : 's'} are available. Verify specs and media rights before publication.`,
+    articleUpdate: `${records.length} saved extraction record${records.length === 1 ? '' : 's'} and ${candidates.length} review-only product candidate card${candidates.length === 1 ? '' : 's'} are available. Verify specs and media rights before publication.`,
     comparisonRows: candidates.map((item) => ({ vendor: item.vendor, productName: item.productName, sourceUrl: item.productUrl, status: item.recommendationStatus }))
   };
 }
@@ -171,6 +188,8 @@ function saveExtractionResult(result) {
   const blocker = result.blocker || (readableEvidence ? '' : 'No readable text evidence captured. Treat as access-wall/unreadable-page candidate.');
   const detected = result.detectedFields || {};
   const fields = positiveDetectedFields(detected);
+  const urlClass = classifyUrl(sourceUrl);
+  const evidenceKind = urlClass.isLikelyProduct ? 'product_candidate' : 'vendor_source';
 
   const existingRecord = db.researchRecords.find((record) => canonicalUrl(record.sourceUrl) === sourceUrl);
   const record = {
@@ -179,6 +198,7 @@ function saveExtractionResult(result) {
     sourceId: source?.id || '',
     sourceUrl,
     adapter: 'live_fetch',
+    evidenceKind,
     extractedAt,
     confidence,
     verificationStatus,
@@ -203,39 +223,46 @@ function saveExtractionResult(result) {
     source.extractableFields = fields.join(', ') || 'none detected';
     source.blockers = blocker;
     source.nextAction = readableEvidence
-      ? 'Review extracted evidence, verify specs, and classify media rights.'
-      : 'Try a reader/browser extraction or a specific product/category URL; homepage did not expose readable evidence.';
+      ? (urlClass.isLikelyProduct ? 'Review product evidence, verify specs, and classify media rights.' : 'Vendor/source page captured. Next: discover category and product URLs before creating product cards.')
+      : 'Try a reader/browser extraction or a specific product/category URL; this page did not expose readable evidence.';
   }
 
-  const existingCandidate = db.productCandidates.find((candidate) => canonicalUrl(candidate.productUrl) === sourceUrl);
-  const candidate = {
-    id: existingCandidate?.id || makeId('candidate', `${host}-${result.title || 'page'}`),
-    runId: run.id,
-    sourceId: source?.id || '',
-    researchRecordId: record.id,
-    vendor: host,
-    productName: result.title || '(no readable title)',
-    productUrl: sourceUrl,
-    category: 'Unknown',
-    material: 'Unknown',
-    height: '',
-    weight: '',
-    price: '',
-    imageRights: 'unknown',
-    bestFor: readableEvidence ? 'Pending evidence review' : 'Not usable yet; extraction did not capture readable product evidence.',
-    ownerRisk: blocker || 'Specs and media rights remain unverified.',
-    recommendationStatus: 'needs_review',
-    evidenceNotes: readableEvidence
-      ? 'Created from saved live-fetch extraction evidence. Human review required.'
-      : 'Extraction produced no readable evidence. Use as blocker/access-wall record, not a product example.'
-  };
-  if (existingCandidate) Object.assign(existingCandidate, candidate);
-  else db.productCandidates.push(candidate);
+  let candidate = null;
+  let candidateAction = 'no product candidate created';
+  if (urlClass.isLikelyProduct && readableEvidence) {
+    const existingCandidate = db.productCandidates.find((item) => canonicalUrl(item.productUrl) === sourceUrl);
+    candidate = {
+      id: existingCandidate?.id || makeId('candidate', `${host}-${result.title || 'page'}`),
+      runId: run.id,
+      sourceId: source?.id || '',
+      researchRecordId: record.id,
+      vendor: host,
+      productName: result.title || '(no readable title)',
+      productUrl: sourceUrl,
+      category: 'Unknown',
+      material: 'Unknown',
+      height: '',
+      weight: '',
+      price: '',
+      imageRights: 'unknown',
+      bestFor: 'Pending evidence review',
+      ownerRisk: blocker || 'Specs and media rights remain unverified.',
+      recommendationStatus: 'needs_review',
+      evidenceNotes: 'Created from likely product-page extraction evidence. Human review required.'
+    };
+    if (existingCandidate) {
+      Object.assign(existingCandidate, candidate);
+      candidateAction = 'updated review-only product candidate card';
+    } else {
+      db.productCandidates.push(candidate);
+      candidateAction = 'created review-only product candidate card';
+    }
+  }
 
   db.guidePackages = [buildGuidePackage(db)];
   run.status = 'needs_review';
   run.updatedAt = extractedAt;
-  db.workLogs.push(createWorkLog(run.id, `${existingRecord ? 'Updated' : 'Saved'} extraction evidence for ${sourceUrl}; ${existingCandidate ? 'updated' : 'created'} review-only candidate card.`, confidence === 'blocked' ? 'blocked' : 'warning'));
+  db.workLogs.push(createWorkLog(run.id, `${existingRecord ? 'Updated' : 'Saved'} ${evidenceKind} evidence for ${sourceUrl}; ${candidateAction}.`, confidence === 'blocked' ? 'blocked' : 'warning'));
   saveDatabase(db);
   return { record, candidate, guidePackage: db.guidePackages[0] };
 }
