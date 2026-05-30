@@ -88,6 +88,11 @@ function stripTags(value) {
     .trim();
 }
 
+function isJunkLink(url, label = '') {
+  const text = `${url.pathname} ${url.search} ${label}`.toLowerCase();
+  return /cdn-cgi|email-protection|mailto:|tel:|javascript:|#|wp-json|xmlrpc|feed|rss|my-account|account|login|logout|cart|checkout|wishlist|compare|currency|language|privacy|terms/.test(text);
+}
+
 function extractSuggestedLinks(html, baseUrl) {
   const anchors = [...html.matchAll(/<a\s+[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)];
   const seen = new Set();
@@ -101,6 +106,8 @@ function extractSuggestedLinks(html, baseUrl) {
     } catch {
       continue;
     }
+    const label = stripTags(labelHtml).replace(/\s+/g, ' ').trim() || next.pathname;
+    if (isJunkLink(next, label)) continue;
     if (!['http:', 'https:'].includes(next.protocol)) continue;
     if (next.hostname.replace(/^www\./, '') !== baseHost) continue;
     next.hash = '';
@@ -108,7 +115,6 @@ function extractSuggestedLinks(html, baseUrl) {
     if (seen.has(normalized)) continue;
     seen.add(normalized);
 
-    const label = stripTags(labelHtml).replace(/\s+/g, ' ').trim() || next.pathname;
     const score = scoreLink(next, label);
     if (score <= 0) continue;
     scored.push({ url: normalized, label, score, kind: classifyLinkKind(next, label) });
@@ -122,10 +128,10 @@ function extractSuggestedLinks(html, baseUrl) {
 function scoreLink(url, label) {
   const text = `${url.pathname} ${label}`.toLowerCase();
   let score = 0;
-  if (/product|products|shop|collection|collections|category|categories|doll|body|torso|silicone|tpe|new|best|sale|light|weight|small|mini|teen|adult/.test(text)) score += 4;
-  if (/product|products|shop|collection|collections|category|categories/.test(text)) score += 4;
+  if (/product-category|shop|collection|collections|category|categories/.test(text)) score += 7;
+  if (/product|products|doll|body|torso|silicone|tpe|new|best|sale|light|weight|small|mini|adult/.test(text)) score += 4;
   if (/shipping|return|refund|warranty|care|clean|faq|support|contact/.test(text)) score += 2;
-  if (/blog|privacy|terms|login|account|cart|checkout|wishlist|track|currency|language/.test(text)) score -= 4;
+  if (/blog|privacy|terms|login|account|cart|checkout|wishlist|track|currency|language|cdn-cgi|email-protection/.test(text)) score -= 8;
   if (url.pathname === '/' || url.pathname === '') score -= 3;
   if (url.pathname.split('/').filter(Boolean).length >= 2) score += 1;
   return score;
@@ -134,9 +140,10 @@ function scoreLink(url, label) {
 function classifyLinkKind(url, label) {
   const text = `${url.pathname} ${label}`.toLowerCase();
   if (/shipping|return|refund|warranty|care|clean|faq|support|contact/.test(text)) return 'support_policy';
-  if (/product|products|item|model|doll|body|torso/.test(text) && url.pathname.split('/').filter(Boolean).length >= 2) return 'possible_product';
-  if (/shop|collection|collections|category|categories/.test(text)) return 'possible_category';
-  return 'possible_internal';
+  if (/blog|news|guide|article/.test(text)) return 'article_guide';
+  if (/product-category|shop|collection|collections|category|categories/.test(text)) return 'likely_category';
+  if (/product|products|item|model|doll|body|torso/.test(text) && url.pathname.split('/').filter(Boolean).length >= 2) return 'likely_product';
+  return 'unknown';
 }
 
 function detectBuyerGuideFields(text) {
