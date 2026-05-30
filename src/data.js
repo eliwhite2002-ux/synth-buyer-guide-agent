@@ -1,24 +1,293 @@
 const fs = require('fs');
 const path = require('path');
+
 const DB_PATH = process.env.SBGA_DB_PATH || path.join(__dirname, '..', 'data', 'app-db.json');
 const SEED_PATH = path.join(__dirname, '..', 'data', 'seed-vendors.json');
 const guideTypes = ['First-Time Buyer Guide', 'TPE vs Silicone', 'Weight & Storage', 'Vendor Trust', 'AI Heads'];
+
 function now() { return new Date().toISOString(); }
 function slugify(value) { return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'item'; }
 function makeId(prefix, value) { return `${prefix}_${slugify(value)}_${Math.random().toString(36).slice(2, 8)}`; }
 function parseSeedList(seedList) { return String(seedList || '').split(/\r?\n|,/).map((item) => item.trim()).filter(Boolean); }
 function loadSeeds() { return JSON.parse(fs.readFileSync(SEED_PATH, 'utf8')); }
-function createSource(runId, name) { return { id: makeId('src', name), runId, name, sourceType: 'unknown', officialUrl: '', confidence: 'weak', status: 'inbox', importantPages: '', extractableFields: '', blockers: '', ownerExperienceRelevance: '', nextAction: 'Discover official source and important pages.' }; }
-function createWorkLog(runId, message, severity = 'info') { return { id: makeId('log', message), runId, message, severity, createdAt: now() }; }
-function normalizeDatabase(db) { db.productCandidates ||= []; db.assets ||= []; db.guideBlocks ||= []; db.workLogs ||= []; db.researchRecords ||= []; db.guidePackages ||= []; return db; }
-function buildSeedDatabase() { const seeds = loadSeeds(); const runId = 'run_extraction_001'; const createdAt = now(); return normalizeDatabase({ extractionRuns: [{ id: runId, title: seeds.extractionRun001.title, guideType: seeds.extractionRun001.guideType, seedList: seeds.extractionRun001.sources.join('\n'), status: 'draft', notes: 'Seed run for the editorial extraction workflow.', createdAt, updatedAt: createdAt }], sources: seeds.extractionRun001.sources.map((name) => createSource(runId, name)), broaderSourceList: seeds.broaderSourceList, guideTypes, workLogs: [createWorkLog(runId, 'Seed run created from data/seed-vendors.json.', 'complete'), createWorkLog(runId, 'Parsed 4 seed sources into Source rows.', 'complete')] }); }
-function ensureDatabase() { if (!fs.existsSync(DB_PATH)) { fs.mkdirSync(path.dirname(DB_PATH), { recursive: true }); fs.writeFileSync(DB_PATH, JSON.stringify(buildSeedDatabase(), null, 2)); } }
-function loadDatabase() { ensureDatabase(); return normalizeDatabase(JSON.parse(fs.readFileSync(DB_PATH, 'utf8'))); }
-function saveDatabase(db) { fs.mkdirSync(path.dirname(DB_PATH), { recursive: true }); fs.writeFileSync(DB_PATH, JSON.stringify(normalizeDatabase(db), null, 2)); }
-function createExtractionRun({ title, guideType, seedList, notes = '' }) { const db = loadDatabase(); const safeTitle = title && title.trim() ? title.trim() : 'Untitled Extraction Run'; const safeGuideType = guideTypes.includes(guideType) ? guideType : 'First-Time Buyer Guide'; const id = makeId('run', safeTitle); const createdAt = now(); const sources = parseSeedList(seedList).map((name) => createSource(id, name)); db.extractionRuns.push({ id, title: safeTitle, guideType: safeGuideType, seedList: sources.map((source) => source.name).join('\n'), status: 'draft', notes, createdAt, updatedAt: createdAt }); db.sources.push(...sources); db.workLogs.push(createWorkLog(id, `Created extraction run: ${safeTitle}.`, 'complete'), createWorkLog(id, `Parsed ${sources.length} source${sources.length === 1 ? '' : 's'} from seed list.`, 'complete')); saveDatabase(db); return { runId: id, sourceCount: sources.length }; }
-function buildGuidePackage(db) { const records = db.researchRecords; const candidates = db.productCandidates; return { id: 'guide_package_current', status: 'needs_review', updatedAt: now(), evidenceRecordCount: records.length, candidateCount: candidates.length, articleUpdate: `${records.length} saved extraction record${records.length === 1 ? '' : 's'} and ${candidates.length} review-only candidate card${candidates.length === 1 ? '' : 's'} are available. Verify specs and media rights before publication.`, comparisonRows: candidates.map((item) => ({ vendor: item.vendor, productName: item.productName, sourceUrl: item.productUrl, status: item.recommendationStatus })) }; }
-function saveExtractionResult(result) { const db = loadDatabase(); const run = db.extractionRuns[0]; const sourceUrl = result.targetUrl || ''; const host = (() => { try { return new URL(sourceUrl).hostname.replace(/^www\./, ''); } catch { return 'unknown source'; } })(); const source = db.sources.find((item) => sourceUrl.includes(slugify(item.name).replace(/-/g, ''))) || db.sources[0]; const extractedAt = result.completedAt || now(); const verificationStatus = 'needs_review'; const confidence = result.ok ? 'probable' : 'blocked'; const blocker = result.blocker || ''; const record = { id: makeId('research', sourceUrl), runId: run.id, sourceId: source?.id || '', sourceUrl, adapter: 'live_fetch', extractedAt, confidence, verificationStatus, blocker, evidence: { title: result.title || '', description: result.description || '', headings: result.headings || [], detectedFields: result.detectedFields || {}, textSample: result.textSample || '', statusCode: result.statusCode || null } }; db.researchRecords.push(record); if (source) { source.officialUrl = sourceUrl; source.confidence = confidence; source.status = 'needs_review'; source.importantPages = sourceUrl; source.extractableFields = Object.entries(result.detectedFields || {}).filter(([, value]) => value === true).map(([key]) => key).join(', '); source.blockers = blocker; source.nextAction = 'Review extracted evidence, verify specs, and classify media rights.'; } const candidate = { id: makeId('candidate', `${host}-${result.title || 'page'}`), runId: run.id, sourceId: source?.id || '', researchRecordId: record.id, vendor: host, productName: result.title || host, productUrl: sourceUrl, category: 'Unknown', material: 'Unknown', height: '', weight: '', price: '', imageRights: 'unknown', bestFor: 'Pending evidence review', ownerRisk: blocker || 'Specs and media rights remain unverified.', recommendationStatus: 'needs_review', evidenceNotes: 'Created from saved live-fetch extraction evidence. Human review required.' }; db.productCandidates.push(candidate); db.guidePackages = [buildGuidePackage(db)]; run.status = 'needs_review'; run.updatedAt = extractedAt; db.workLogs.push(createWorkLog(run.id, `Saved extraction evidence for ${sourceUrl} and created review-only candidate card.`, result.ok ? 'warning' : 'blocked')); saveDatabase(db); return { record, candidate, guidePackage: db.guidePackages[0] }; }
-function getResearchState() { const db = loadDatabase(); return { researchRecords: db.researchRecords.slice().reverse(), productCandidates: db.productCandidates.slice().reverse(), guidePackage: db.guidePackages[0] || buildGuidePackage(db) }; }
-function getDashboard() { const db = loadDatabase(); return { runs: db.extractionRuns, counts: { extractionRuns: db.extractionRuns.length, sources: db.sources.length, productCandidates: db.productCandidates.length, blockedSources: db.sources.filter((source) => source.confidence === 'blocked').length, readyGuideBlocks: db.guideBlocks.filter((block) => block.status === 'ready').length, needsReview: db.sources.filter((source) => source.status === 'needs_review').length + db.productCandidates.filter((candidate) => candidate.recommendationStatus === 'needs_review').length }, broaderSourceList: db.broaderSourceList, guideTypes: db.guideTypes }; }
-function getRun(runId) { const db = loadDatabase(); const run = db.extractionRuns.find((item) => item.id === runId) || db.extractionRuns[0]; if (!run) return null; return { run, sources: db.sources.filter((source) => source.runId === run.id), workLogs: db.workLogs.filter((log) => log.runId === run.id).sort((a, b) => a.createdAt.localeCompare(b.createdAt)), guideTypes: db.guideTypes }; }
-module.exports = { DB_PATH, buildSeedDatabase, createExtractionRun, ensureDatabase, getDashboard, getResearchState, getRun, loadDatabase, parseSeedList, saveDatabase, saveExtractionResult };
+
+function createSource(runId, name) {
+  return {
+    id: makeId('src', name),
+    runId,
+    name,
+    sourceType: 'unknown',
+    officialUrl: '',
+    confidence: 'weak',
+    status: 'inbox',
+    importantPages: '',
+    extractableFields: '',
+    blockers: '',
+    ownerExperienceRelevance: '',
+    nextAction: 'Discover official source and important pages.'
+  };
+}
+
+function createWorkLog(runId, message, severity = 'info') {
+  return { id: makeId('log', message), runId, message, severity, createdAt: now() };
+}
+
+function normalizeDatabase(db) {
+  db.productCandidates ||= [];
+  db.assets ||= [];
+  db.guideBlocks ||= [];
+  db.workLogs ||= [];
+  db.researchRecords ||= [];
+  db.guidePackages ||= [];
+  return db;
+}
+
+function buildSeedDatabase() {
+  const seeds = loadSeeds();
+  const runId = 'run_extraction_001';
+  const createdAt = now();
+  return normalizeDatabase({
+    extractionRuns: [{
+      id: runId,
+      title: seeds.extractionRun001.title,
+      guideType: seeds.extractionRun001.guideType,
+      seedList: seeds.extractionRun001.sources.join('\n'),
+      status: 'draft',
+      notes: 'Seed run for the editorial extraction workflow.',
+      createdAt,
+      updatedAt: createdAt
+    }],
+    sources: seeds.extractionRun001.sources.map((name) => createSource(runId, name)),
+    broaderSourceList: seeds.broaderSourceList,
+    guideTypes,
+    workLogs: [
+      createWorkLog(runId, 'Seed run created from data/seed-vendors.json.', 'complete'),
+      createWorkLog(runId, 'Parsed 4 seed sources into Source rows.', 'complete')
+    ]
+  });
+}
+
+function ensureDatabase() {
+  if (!fs.existsSync(DB_PATH)) {
+    fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+    fs.writeFileSync(DB_PATH, JSON.stringify(buildSeedDatabase(), null, 2));
+  }
+}
+
+function loadDatabase() {
+  ensureDatabase();
+  return normalizeDatabase(JSON.parse(fs.readFileSync(DB_PATH, 'utf8')));
+}
+
+function saveDatabase(db) {
+  fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+  fs.writeFileSync(DB_PATH, JSON.stringify(normalizeDatabase(db), null, 2));
+}
+
+function createExtractionRun({ title, guideType, seedList, notes = '' }) {
+  const db = loadDatabase();
+  const safeTitle = title && title.trim() ? title.trim() : 'Untitled Extraction Run';
+  const safeGuideType = guideTypes.includes(guideType) ? guideType : 'First-Time Buyer Guide';
+  const id = makeId('run', safeTitle);
+  const createdAt = now();
+  const sources = parseSeedList(seedList).map((name) => createSource(id, name));
+
+  db.extractionRuns.push({
+    id,
+    title: safeTitle,
+    guideType: safeGuideType,
+    seedList: sources.map((source) => source.name).join('\n'),
+    status: 'draft',
+    notes,
+    createdAt,
+    updatedAt: createdAt
+  });
+  db.sources.push(...sources);
+  db.workLogs.push(
+    createWorkLog(id, `Created extraction run: ${safeTitle}.`, 'complete'),
+    createWorkLog(id, `Parsed ${sources.length} source${sources.length === 1 ? '' : 's'} from seed list.`, 'complete')
+  );
+  saveDatabase(db);
+  return { runId: id, sourceCount: sources.length };
+}
+
+function canonicalUrl(value) {
+  try {
+    const url = new URL(value || '');
+    url.hash = '';
+    url.search = '';
+    return url.toString().replace(/\/$/, '/');
+  } catch {
+    return String(value || '').trim();
+  }
+}
+
+function hostFromUrl(value) {
+  try { return new URL(value).hostname.replace(/^www\./, ''); } catch { return 'unknown source'; }
+}
+
+function positiveDetectedFields(fields = {}) {
+  return Object.entries(fields).filter(([, value]) => value === true).map(([key]) => key);
+}
+
+function hasReadableEvidence(result) {
+  const title = String(result.title || '').trim();
+  const description = String(result.description || '').trim();
+  const textSample = String(result.textSample || '').trim();
+  const headings = Array.isArray(result.headings) ? result.headings.filter(Boolean) : [];
+  const positives = positiveDetectedFields(result.detectedFields || {});
+  return Boolean(title || description || textSample || headings.length || positives.length);
+}
+
+function buildGuidePackage(db) {
+  const records = db.researchRecords;
+  const candidates = db.productCandidates;
+  return {
+    id: 'guide_package_current',
+    status: 'needs_review',
+    updatedAt: now(),
+    evidenceRecordCount: records.length,
+    candidateCount: candidates.length,
+    articleUpdate: `${records.length} saved extraction record${records.length === 1 ? '' : 's'} and ${candidates.length} review-only candidate card${candidates.length === 1 ? '' : 's'} are available. Verify specs and media rights before publication.`,
+    comparisonRows: candidates.map((item) => ({ vendor: item.vendor, productName: item.productName, sourceUrl: item.productUrl, status: item.recommendationStatus }))
+  };
+}
+
+function findSourceForUrl(db, sourceUrl) {
+  const host = hostFromUrl(sourceUrl).replace(/[^a-z0-9]/gi, '').toLowerCase();
+  return db.sources.find((source) => host.includes(slugify(source.name).replace(/-/g, ''))) || db.sources[0];
+}
+
+function saveExtractionResult(result) {
+  const db = loadDatabase();
+  const run = db.extractionRuns[0];
+  const sourceUrl = canonicalUrl(result.targetUrl || '');
+  const host = hostFromUrl(sourceUrl);
+  const source = findSourceForUrl(db, sourceUrl);
+  const extractedAt = result.completedAt || now();
+  const verificationStatus = 'needs_review';
+  const readableEvidence = hasReadableEvidence(result);
+  const confidence = result.ok && readableEvidence ? 'probable' : 'blocked';
+  const blocker = result.blocker || (readableEvidence ? '' : 'No readable text evidence captured. Treat as access-wall/unreadable-page candidate.');
+  const detected = result.detectedFields || {};
+  const fields = positiveDetectedFields(detected);
+
+  const existingRecord = db.researchRecords.find((record) => canonicalUrl(record.sourceUrl) === sourceUrl);
+  const record = {
+    id: existingRecord?.id || makeId('research', sourceUrl),
+    runId: run.id,
+    sourceId: source?.id || '',
+    sourceUrl,
+    adapter: 'live_fetch',
+    extractedAt,
+    confidence,
+    verificationStatus,
+    blocker,
+    evidence: {
+      title: result.title || '',
+      description: result.description || '',
+      headings: result.headings || [],
+      detectedFields: detected,
+      textSample: result.textSample || '',
+      statusCode: result.statusCode || null
+    }
+  };
+  if (existingRecord) Object.assign(existingRecord, record);
+  else db.researchRecords.push(record);
+
+  if (source) {
+    source.officialUrl = sourceUrl;
+    source.confidence = confidence;
+    source.status = 'needs_review';
+    source.importantPages = sourceUrl;
+    source.extractableFields = fields.join(', ') || 'none detected';
+    source.blockers = blocker;
+    source.nextAction = readableEvidence
+      ? 'Review extracted evidence, verify specs, and classify media rights.'
+      : 'Try a reader/browser extraction or a specific product/category URL; homepage did not expose readable evidence.';
+  }
+
+  const existingCandidate = db.productCandidates.find((candidate) => canonicalUrl(candidate.productUrl) === sourceUrl);
+  const candidate = {
+    id: existingCandidate?.id || makeId('candidate', `${host}-${result.title || 'page'}`),
+    runId: run.id,
+    sourceId: source?.id || '',
+    researchRecordId: record.id,
+    vendor: host,
+    productName: result.title || '(no readable title)',
+    productUrl: sourceUrl,
+    category: 'Unknown',
+    material: 'Unknown',
+    height: '',
+    weight: '',
+    price: '',
+    imageRights: 'unknown',
+    bestFor: readableEvidence ? 'Pending evidence review' : 'Not usable yet; extraction did not capture readable product evidence.',
+    ownerRisk: blocker || 'Specs and media rights remain unverified.',
+    recommendationStatus: 'needs_review',
+    evidenceNotes: readableEvidence
+      ? 'Created from saved live-fetch extraction evidence. Human review required.'
+      : 'Extraction produced no readable evidence. Use as blocker/access-wall record, not a product example.'
+  };
+  if (existingCandidate) Object.assign(existingCandidate, candidate);
+  else db.productCandidates.push(candidate);
+
+  db.guidePackages = [buildGuidePackage(db)];
+  run.status = 'needs_review';
+  run.updatedAt = extractedAt;
+  db.workLogs.push(createWorkLog(run.id, `${existingRecord ? 'Updated' : 'Saved'} extraction evidence for ${sourceUrl}; ${existingCandidate ? 'updated' : 'created'} review-only candidate card.`, confidence === 'blocked' ? 'blocked' : 'warning'));
+  saveDatabase(db);
+  return { record, candidate, guidePackage: db.guidePackages[0] };
+}
+
+function getResearchState() {
+  const db = loadDatabase();
+  return {
+    researchRecords: db.researchRecords.slice().reverse(),
+    productCandidates: db.productCandidates.slice().reverse(),
+    guidePackage: db.guidePackages[0] || buildGuidePackage(db)
+  };
+}
+
+function getDashboard() {
+  const db = loadDatabase();
+  return {
+    runs: db.extractionRuns,
+    counts: {
+      extractionRuns: db.extractionRuns.length,
+      sources: db.sources.length,
+      productCandidates: db.productCandidates.length,
+      blockedSources: db.sources.filter((source) => source.confidence === 'blocked').length,
+      readyGuideBlocks: db.guideBlocks.filter((block) => block.status === 'ready').length,
+      needsReview: db.sources.filter((source) => source.status === 'needs_review').length + db.productCandidates.filter((candidate) => candidate.recommendationStatus === 'needs_review').length
+    },
+    broaderSourceList: db.broaderSourceList,
+    guideTypes: db.guideTypes
+  };
+}
+
+function getRun(runId) {
+  const db = loadDatabase();
+  const run = db.extractionRuns.find((item) => item.id === runId) || db.extractionRuns[0];
+  if (!run) return null;
+  return {
+    run,
+    sources: db.sources.filter((source) => source.runId === run.id),
+    workLogs: db.workLogs.filter((log) => log.runId === run.id).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+    guideTypes: db.guideTypes
+  };
+}
+
+module.exports = {
+  DB_PATH,
+  buildSeedDatabase,
+  createExtractionRun,
+  ensureDatabase,
+  getDashboard,
+  getResearchState,
+  getRun,
+  loadDatabase,
+  parseSeedList,
+  saveDatabase,
+  saveExtractionResult
+};
