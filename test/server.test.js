@@ -5,34 +5,16 @@ const path = require("node:path");
 const test = require("node:test");
 const { createServer } = require("../src/server");
 const { Store } = require("../src/store");
-
 const seedsPath = path.join(__dirname, "..", "data", "seed-vendors.json");
-
 test("server starts and creates a run through the API", async (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "synth-guide-api-"));
   const store = new Store({ storePath: path.join(directory, "store.json"), seedsPath });
-  const server = createServer({ store });
-  await new Promise((resolve) => server.listen(0, resolve));
-  t.after(() => {
-    server.close();
-    fs.rmSync(directory, { recursive: true, force: true });
-  });
-
+  const server = createServer({ store }); await new Promise((resolve) => server.listen(0, resolve));
+  t.after(() => { server.close(); fs.rmSync(directory, { recursive: true, force: true }); });
   const baseUrl = `http://127.0.0.1:${server.address().port}`;
-  const dashboard = await fetch(`${baseUrl}/api/dashboard`).then((response) => response.json());
-  assert.equal(dashboard.runs[0].title, "Extraction Run 001");
-
-  const response = await fetch(`${baseUrl}/api/runs`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      title: "Storage guide queue",
-      guideType: "Weight & Storage",
-      seedList: "Vendor One\nVendor Two",
-    }),
-  });
-  assert.equal(response.status, 201);
-  const run = await response.json();
-  assert.equal(run.sources.length, 2);
-  assert.equal(run.workLogs.length, 2);
+  const dashboard = await fetch(`${baseUrl}/api/dashboard`).then((response) => response.json()); assert.equal(dashboard.runs[0].title, "Extraction Run 001");
+  const response = await fetch(`${baseUrl}/api/runs`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "Storage guide queue", guideType: "Weight & Storage", seedList: "Vendor One\nVendor Two" }) });
+  assert.equal(response.status, 201); const run = await response.json(); assert.equal(run.sources.length, 2); assert.equal(run.workLogs.length, 2);
+  const extractResponse = await fetch(`${baseUrl}/api/runs/${run.id}/extract-url`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceId: run.sources[0].id, url: "https://vendor.example/products/sample" }) });
+  assert.equal(extractResponse.status, 201); const extracted = await extractResponse.json(); assert.equal(extracted.run.researchRecords.length, 1); assert.equal(extracted.run.productCandidates.length, 1); assert.equal(extracted.run.guidePackage.evidenceRecordCount, 1);
 });
