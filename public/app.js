@@ -1,170 +1,48 @@
 const app = document.querySelector("#app");
 const newRunButton = document.querySelector("#new-run-button");
 const state = { dashboard: null, view: "dashboard", run: null, runTab: "sources" };
-
-const escapeHtml = (value) =>
-  String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-
+const escapeHtml = (value) => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
 const badge = (value) => `<span class="badge ${escapeHtml(value)}">${escapeHtml(value).replaceAll("_", " ")}</span>`;
 const list = (values) => values?.length ? `<span class="comma-list">${values.map(escapeHtml).join(", ")}</span>` : '<span class="muted">None yet</span>';
-const api = async (url, options) => {
-  const response = await fetch(url, options);
-  const body = await response.json();
-  if (!response.ok) throw new Error(body.error || "Request failed.");
-  return body;
-};
-
-async function loadDashboard() {
-  state.dashboard = await api("/api/dashboard");
-}
+const api = async (url, options) => { const response = await fetch(url, options); const body = await response.json(); if (!response.ok) throw new Error(body.error || "Request failed."); return body; };
+async function loadDashboard() { state.dashboard = await api("/api/dashboard"); }
 
 function renderDashboard() {
   const { summary, runs } = state.dashboard;
-  const cards = [
-    ["Extraction runs", summary.extractionRuns],
-    ["Sources", summary.sources],
-    ["Product candidates", summary.productCandidates],
-    ["Blocked sources", summary.blockedSources],
-    ["Ready guide blocks", summary.readyGuideBlocks],
-    ["Needs review", summary.needsReview],
-  ];
-  app.innerHTML = `
-    <section>
-      <p class="eyebrow">Dashboard</p>
-      <h2>Extraction runs</h2>
-      <p class="muted">Start with vendor names. The workflow owns discovery, evidence collection, and narrow exception tracking.</p>
-      <div class="cards">${cards.map(([label, value]) => `<article class="card"><span>${label}</span><strong>${value}</strong></article>`).join("")}</div>
-      <article class="panel">
-        <div class="panel-header"><div><h3>Run history</h3><p class="muted">Seed data and editorial research runs.</p></div></div>
-        <div class="table-wrap">
-          <table><thead><tr><th>Title</th><th>Guide type</th><th>Status</th><th>Sources</th><th>Created</th></tr></thead>
-          <tbody>${runs.map((run) => `
-            <tr class="clickable" data-run-id="${escapeHtml(run.id)}">
-              <td><strong>${escapeHtml(run.title)}</strong></td><td>${escapeHtml(run.guideType)}</td>
-              <td>${badge(run.status)}</td><td>${run.sourceCount}</td><td>${new Date(run.createdAt).toLocaleString()}</td>
-            </tr>`).join("")}</tbody></table>
-        </div>
-      </article>
-    </section>`;
+  const cards = [["Extraction runs", summary.extractionRuns], ["Sources", summary.sources], ["Product candidates", summary.productCandidates], ["Blocked sources", summary.blockedSources], ["Ready guide blocks", summary.readyGuideBlocks], ["Needs review", summary.needsReview]];
+  app.innerHTML = `<section><p class="eyebrow">Dashboard</p><h2>Extraction runs</h2><p class="muted">Start with vendor names. The workflow owns discovery, evidence collection, and narrow exception tracking.</p><div class="cards">${cards.map(([label, value]) => `<article class="card"><span>${label}</span><strong>${value}</strong></article>`).join("")}</div><article class="panel"><div class="panel-header"><div><h3>Run history</h3><p class="muted">Seed data and editorial research runs.</p></div></div><div class="table-wrap"><table><thead><tr><th>Title</th><th>Guide type</th><th>Status</th><th>Sources</th><th>Created</th></tr></thead><tbody>${runs.map((run) => `<tr class="clickable" data-run-id="${escapeHtml(run.id)}"><td><strong>${escapeHtml(run.title)}</strong></td><td>${escapeHtml(run.guideType)}</td><td>${badge(run.status)}</td><td>${run.sourceCount}</td><td>${new Date(run.createdAt).toLocaleString()}</td></tr>`).join("")}</tbody></table></div></article></section>`;
   document.querySelectorAll("[data-run-id]").forEach((row) => row.addEventListener("click", () => openRun(row.dataset.runId)));
 }
 
 function renderNewRun() {
   const samples = state.dashboard.sampleSeeds;
-  app.innerHTML = `
-    <section>
-      <button class="button ghost" id="back">Back to dashboard</button>
-      <article class="panel">
-        <p class="eyebrow">New extraction run</p>
-        <h2>Create a research queue</h2>
-        <p class="muted">Paste source names or URLs. Each non-empty line becomes a queued source for later discovery.</p>
-        <form id="new-run-form" class="form-grid">
-          <label>Title<input name="title" required placeholder="Example: Vendor trust refresh" /></label>
-          <label>Guide type<select name="guideType">
-            ${["First-Time Buyer Guide", "TPE vs Silicone", "Weight & Storage", "Vendor Trust", "AI Heads"].map((type) => `<option>${type}</option>`).join("")}
-          </select></label>
-          <label class="full">Seed list<textarea name="seedList" required placeholder="One source per line"></textarea></label>
-          <div class="full seed-box"><button type="button" class="button" id="use-samples">Use broader sample list</button><span>${samples.length} importable seeds from <code>data/seed-vendors.json</code></span></div>
-          <p class="full error" id="form-error"></p>
-          <div class="full form-actions"><span class="muted">Discovery and extraction arrive in Issue #2.</span><button class="button primary">Create run</button></div>
-        </form>
-      </article>
-    </section>`;
+  app.innerHTML = `<section><button class="button ghost" id="back">Back to dashboard</button><article class="panel"><p class="eyebrow">New extraction run</p><h2>Create a research queue</h2><p class="muted">Paste source names or URLs. Each non-empty line becomes a queued source for later discovery.</p><form id="new-run-form" class="form-grid"><label>Title<input name="title" required placeholder="Example: Vendor trust refresh" /></label><label>Guide type<select name="guideType">${["First-Time Buyer Guide", "TPE vs Silicone", "Weight & Storage", "Vendor Trust", "AI Heads"].map((type) => `<option>${type}</option>`).join("")}</select></label><label class="full">Seed list<textarea name="seedList" required placeholder="One source per line"></textarea></label><div class="full seed-box"><button type="button" class="button" id="use-samples">Use broader sample list</button><span>${samples.length} importable seeds from <code>data/seed-vendors.json</code></span></div><p class="full error" id="form-error"></p><div class="full form-actions"><span class="muted">Create the queue, then save URL evidence from the run.</span><button class="button primary">Create run</button></div></form></article></section>`;
   document.querySelector("#back").addEventListener("click", showDashboard);
-  document.querySelector("#use-samples").addEventListener("click", () => {
-    document.querySelector("[name=seedList]").value = samples.join("\n");
-  });
+  document.querySelector("#use-samples").addEventListener("click", () => { document.querySelector("[name=seedList]").value = samples.join("\n"); });
   document.querySelector("#new-run-form").addEventListener("submit", createRun);
 }
 
-async function createRun(event) {
-  event.preventDefault();
-  const form = new FormData(event.currentTarget);
-  const error = document.querySelector("#form-error");
-  error.textContent = "";
-  try {
-    const run = await api("/api/runs", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(Object.fromEntries(form)),
-    });
-    await loadDashboard();
-    state.run = run;
-    state.view = "run";
-    state.runTab = "sources";
-    renderRun();
-  } catch (requestError) {
-    error.textContent = requestError.message;
-  }
-}
+async function createRun(event) { event.preventDefault(); const form = new FormData(event.currentTarget); const error = document.querySelector("#form-error"); error.textContent = ""; try { const run = await api("/api/runs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(Object.fromEntries(form)) }); await loadDashboard(); state.run = run; state.view = "run"; state.runTab = "sources"; renderRun(); } catch (requestError) { error.textContent = requestError.message; } }
+async function openRun(id) { state.run = await api(`/api/runs/${encodeURIComponent(id)}`); state.view = "run"; state.runTab = "sources"; renderRun(); }
 
-async function openRun(id) {
-  state.run = await api(`/api/runs/${encodeURIComponent(id)}`);
-  state.view = "run";
-  state.runTab = "sources";
-  renderRun();
-}
-
+function renderResearchRecord(record) { return `<div class="log"><div class="panel-header"><strong>${escapeHtml(record.sourceUrl)}</strong>${badge(record.verificationStatus)}</div><p class="muted">Adapter: ${escapeHtml(record.adapter)} | Extracted: ${new Date(record.extractedAt).toLocaleString()}</p>${record.evidence.map((item) => `<div class="evidence"><strong>${escapeHtml(item.field)}:</strong> ${escapeHtml(item.value)}<br /><span class="muted">${escapeHtml(item.snippet)}</span></div>`).join("")}</div>`; }
 function renderSources() {
-  const rows = state.run.sources.map((source) => `
-    <tr>
-      <td><strong>${escapeHtml(source.name)}</strong></td><td>${escapeHtml(source.sourceType)}</td>
-      <td>${source.officialUrl ? `<a href="${escapeHtml(source.officialUrl)}">${escapeHtml(source.officialUrl)}</a>` : '<span class="muted">Not discovered</span>'}</td>
-      <td>${badge(source.confidence)}</td><td>${badge(source.status)}</td>
-      <td>${list(source.importantPages)}</td><td>${list(source.extractableFields)}</td>
-      <td>${list(source.blockers)}</td><td>${escapeHtml(source.nextAction)}</td>
-    </tr>`).join("");
-  return `
-    <article class="panel">
-      <div class="panel-header"><div><h3>Source queue</h3><p class="muted">${state.run.sources.length} source rows waiting for discovery.</p></div>
-      <button class="button" disabled>Mock extraction: Coming in Issue #2</button></div>
-      <div class="table-wrap"><table><thead><tr><th>Name</th><th>Type</th><th>Official URL</th><th>Confidence</th><th>Status</th><th>Important pages</th><th>Extractable fields</th><th>Blockers</th><th>Next action</th></tr></thead><tbody>${rows}</tbody></table></div>
-    </article>`;
+  const rows = state.run.sources.map((source) => `<tr><td><strong>${escapeHtml(source.name)}</strong></td><td>${escapeHtml(source.sourceType)}</td><td>${source.officialUrl ? `<a href="${escapeHtml(source.officialUrl)}">${escapeHtml(source.officialUrl)}</a>` : '<span class="muted">Not discovered</span>'}</td><td>${badge(source.confidence)}</td><td>${badge(source.status)}</td><td>${list(source.importantPages)}</td><td>${list(source.extractableFields)}</td><td>${list(source.blockers)}</td><td>${escapeHtml(source.nextAction)}</td></tr>`).join("");
+  return `<article class="panel"><p class="eyebrow">Mock extraction adapter</p><h3>URL to saved evidence</h3><p class="muted">Submit a vendor or product URL. This adapter records mock/unverified evidence for review; it does not fetch or verify page contents yet.</p><form id="extract-url-form" class="extract-form"><label>Source row<select name="sourceId">${state.run.sources.map((source) => `<option value="${escapeHtml(source.id)}">${escapeHtml(source.name)}</option>`).join("")}</select></label><label>Vendor or product URL<input name="url" type="url" required placeholder="https://vendor.example/product-page" /></label><button class="button primary">Extract and save evidence</button></form><p class="error" id="extract-error"></p></article><article class="panel"><div class="panel-header"><div><h3>Source queue</h3><p class="muted">${state.run.sources.length} source rows tracked for discovery and review.</p></div></div><div class="table-wrap"><table><thead><tr><th>Name</th><th>Type</th><th>Official URL</th><th>Confidence</th><th>Status</th><th>Important pages</th><th>Extractable fields</th><th>Blockers</th><th>Next action</th></tr></thead><tbody>${rows}</tbody></table></div></article><article class="panel"><h3>Saved research records</h3><p class="muted">Evidence remains attached to its source URL and verification state.</p><div class="list">${state.run.researchRecords.length ? state.run.researchRecords.map(renderResearchRecord).join("") : '<p class="empty">No extraction evidence saved yet.</p>'}</div></article>`;
 }
-
-function renderWorkLog() {
-  return `<article class="panel"><h3>Work log</h3><p class="muted">A durable record of workflow actions for this run.</p>
-    <div class="list">${state.run.workLogs.map((log) => `<div class="log"><p>${escapeHtml(log.message)}</p><span>${badge(log.severity)} <small class="muted">${new Date(log.createdAt).toLocaleString()}</small></span></div>`).join("")}</div></article>`;
-}
+function renderProductCandidates() { return `<article class="panel"><h3>Product and vendor candidate cards</h3><p class="muted">Mock cards are review-only and cannot become recommendations without verified evidence and media rights.</p><div class="candidate-grid">${state.run.productCandidates.length ? state.run.productCandidates.map((candidate) => `<div class="candidate-card"><div class="panel-header"><strong>${escapeHtml(candidate.productName)}</strong>${badge(candidate.verificationStatus)}</div><p>${escapeHtml(candidate.vendor)}</p><p class="muted">${escapeHtml(candidate.productUrl)}</p><p>${escapeHtml(candidate.evidenceNotes)}</p><div>${badge(candidate.recommendationStatus)} ${badge(candidate.imageRights)}</div></div>`).join("") : '<p class="empty">No candidates yet. Save URL evidence from the Sources tab.</p>'}</div></article>`; }
+function renderGuideBlocks() { return `<article class="panel"><h3>Guide package blocks</h3><p class="muted">These blocks refresh from saved research records and remain pending review.</p><div class="list">${state.run.guideBlocks.length ? state.run.guideBlocks.map((block) => `<div class="log"><div class="panel-header"><strong>${escapeHtml(block.title)}</strong>${badge(block.status)}</div><p>${escapeHtml(block.bodyMarkdown)}</p></div>`).join("") : '<p class="empty">No guide blocks yet. Save URL evidence to refresh the package.</p>'}</div></article>`; }
+function renderOutputPack() { const pack = state.run.guidePackage; if (!pack) return '<article class="panel"><h3>Output pack</h3><p class="empty">No output package yet. Save URL evidence to generate a review draft.</p></article>'; return `<article class="panel"><div class="panel-header"><div><h3>Output pack</h3><p class="muted">Draft content generated only from saved records.</p></div>${badge(pack.status)}</div><h4>Article markdown</h4><pre>${escapeHtml(pack.articleMarkdown)}</pre><h4>Comparison table markdown</h4><pre>${escapeHtml(pack.comparisonTableMarkdown)}</pre><h4>Product-card JSON</h4><pre>${escapeHtml(pack.productCardJson)}</pre></article>`; }
+function renderWorkLog() { return `<article class="panel"><h3>Work log</h3><p class="muted">A durable record of workflow actions for this run.</p><div class="list">${state.run.workLogs.map((log) => `<div class="log"><p>${escapeHtml(log.message)}</p><span>${badge(log.severity)} <small class="muted">${new Date(log.createdAt).toLocaleString()}</small></span></div>`).join("")}</div></article>`; }
 
 function renderRun() {
   const tabs = ["Sources", "Product Candidates", "Asset Rights", "Guide Blocks", "Output Pack", "Work Log"];
-  app.innerHTML = `
-    <section>
-      <button class="button ghost" id="back">Back to dashboard</button>
-      <div class="run-header">
-        <div><p class="eyebrow">${escapeHtml(state.run.guideType)}</p><h2>${escapeHtml(state.run.title)}</h2></div>
-        <div>${badge(state.run.status)}</div>
-      </div>
-      <nav class="tabs">${tabs.map((tab) => {
-        const active = tab.toLowerCase().replaceAll(" ", "_") === state.runTab;
-        const enabled = tab === "Sources" || tab === "Work Log";
-        return `<button class="tab ${active ? "active" : ""}" data-tab="${tab.toLowerCase().replaceAll(" ", "_")}" ${enabled ? "" : "disabled"}>${tab}${enabled ? "" : " - Issue #2"}</button>`;
-      }).join("")}</nav>
-      ${state.runTab === "work_log" ? renderWorkLog() : renderSources()}
-    </section>`;
+  app.innerHTML = `<section><button class="button ghost" id="back">Back to dashboard</button><div class="run-header"><div><p class="eyebrow">${escapeHtml(state.run.guideType)}</p><h2>${escapeHtml(state.run.title)}</h2></div><div>${badge(state.run.status)}</div></div><nav class="tabs">${tabs.map((tab) => { const active = tab.toLowerCase().replaceAll(" ", "_") === state.runTab; const enabled = tab !== "Asset Rights"; return `<button class="tab ${active ? "active" : ""}" data-tab="${tab.toLowerCase().replaceAll(" ", "_")}" ${enabled ? "" : "disabled"}>${tab}${enabled ? "" : " - Issue #2"}</button>`; }).join("")}</nav>${state.runTab === "work_log" ? renderWorkLog() : state.runTab === "product_candidates" ? renderProductCandidates() : state.runTab === "guide_blocks" ? renderGuideBlocks() : state.runTab === "output_pack" ? renderOutputPack() : renderSources()}</section>`;
   document.querySelector("#back").addEventListener("click", showDashboard);
-  document.querySelectorAll("[data-tab]:not(:disabled)").forEach((tab) => tab.addEventListener("click", () => {
-    state.runTab = tab.dataset.tab;
-    renderRun();
-  }));
+  document.querySelectorAll("[data-tab]:not(:disabled)").forEach((tab) => tab.addEventListener("click", () => { state.runTab = tab.dataset.tab; renderRun(); }));
+  document.querySelector("#extract-url-form")?.addEventListener("submit", extractUrl);
 }
-
-function showDashboard() {
-  state.view = "dashboard";
-  renderDashboard();
-}
-
-newRunButton.addEventListener("click", () => {
-  state.view = "new";
-  renderNewRun();
-});
-
-loadDashboard().then(renderDashboard).catch((error) => {
-  app.innerHTML = `<article class="panel"><h2>Unable to load dashboard</h2><p class="error">${escapeHtml(error.message)}</p></article>`;
-});
+async function extractUrl(event) { event.preventDefault(); const form = new FormData(event.currentTarget); const error = document.querySelector("#extract-error"); error.textContent = ""; try { const result = await api(`/api/runs/${encodeURIComponent(state.run.id)}/extract-url`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(Object.fromEntries(form)) }); state.run = result.run; await loadDashboard(); renderRun(); } catch (requestError) { error.textContent = requestError.message; } }
+function showDashboard() { state.view = "dashboard"; renderDashboard(); }
+newRunButton.addEventListener("click", () => { state.view = "new"; renderNewRun(); });
+loadDashboard().then(renderDashboard).catch((error) => { app.innerHTML = `<article class="panel"><h2>Unable to load dashboard</h2><p class="error">${escapeHtml(error.message)}</p></article>`; });
