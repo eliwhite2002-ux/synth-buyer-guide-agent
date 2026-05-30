@@ -6,6 +6,7 @@ const {
   getDashboard,
   getRun
 } = require('./data');
+const { renderStudioPage } = require('./guideStudio');
 
 const PORT = Number(process.env.PORT || 3000);
 
@@ -39,6 +40,7 @@ function layout(title, body) {
       <h1>Buyer Guide Agent</h1>
     </div>
     <nav>
+      <a href="/studio">Guide Studio</a>
       <a href="/">Dashboard</a>
       <a href="/runs/new">New Run</a>
     </nav>
@@ -63,19 +65,32 @@ function renderDashboard() {
   return layout('Dashboard', `
     <section class="hero">
       <div>
-        <p class="eyebrow">Issue #1 MVP</p>
-        <h2>Extraction-run command center</h2>
-        <p>This internal tool starts from vendor/source seed lists, creates source rows, tracks review status, and keeps the work log visible. Extraction behavior is intentionally reserved for Issue #2.</p>
+        <p class="eyebrow">Production tool direction</p>
+        <h2>Build buyer-guide outputs first</h2>
+        <p>The useful product is the Buyer Guide Studio: article draft, comparison table, graphic briefs, product-card schema, and video hooks. Source queues are supporting infrastructure, not the main event.</p>
       </div>
-      <a class="button primary" href="/runs/new">Create extraction run</a>
+      <a class="button primary" href="/studio">Open Guide Studio</a>
     </section>
 
     <section class="rule-card">
-      <strong>Operating rule:</strong> Eli reviews decisions. Eli does not become the research assistant. The agent starts from a source list and tracks discovery itself.
+      <strong>Operating rule:</strong> output first. The system should help create publishable guide assets and graphic/video briefs, not just rows in a database.
     </section>
 
     <section class="cards">
       ${cards.map(([label, count]) => `<article class="card"><span>${escapeHtml(label)}</span><strong>${count}</strong></article>`).join('')}
+    </section>
+
+    <section class="panel two-col">
+      <div>
+        <h3>Buyer Guide Studio</h3>
+        <p class="muted">Draft guide copy, mistake cards, comparison table, visual briefs, product-card schema, and short-video hooks.</p>
+        <a class="button primary" href="/studio">Open useful output pack</a>
+      </div>
+      <div>
+        <h3>Source Queue</h3>
+        <p class="muted">Vendor/source rows support extraction later. They should feed the guide studio, not become the product.</p>
+        <a class="button" href="${firstRun ? `/runs/${encodeURIComponent(firstRun.id)}` : '/runs/new'}">Open source queue</a>
+      </div>
     </section>
 
     <section class="panel">
@@ -98,16 +113,10 @@ function renderDashboard() {
       </table>
     </section>
 
-    <section class="panel two-col">
-      <div>
-        <h3>Seed run</h3>
-        <p>${firstRun ? `Open <a href="/runs/${encodeURIComponent(firstRun.id)}">${escapeHtml(firstRun.title)}</a> to see the required Issue #1 seed state.` : 'No seed run found.'}</p>
-      </div>
-      <div>
-        <h3>Importable source list</h3>
-        <p class="muted">Available sample vendors/sources:</p>
-        <p>${dashboard.broaderSourceList.map(escapeHtml).join(' · ')}</p>
-      </div>
+    <section class="panel">
+      <h3>Importable source list</h3>
+      <p class="muted">Available sample vendors/sources:</p>
+      <p>${dashboard.broaderSourceList.map(escapeHtml).join(' · ')}</p>
     </section>
   `);
 }
@@ -118,7 +127,7 @@ function renderNewRun() {
   return layout('New Extraction Run', `
     <section class="panel narrow">
       <h2>Create extraction run</h2>
-      <p class="muted">Paste one vendor/source per line. Issue #1 only creates rows and logs the run. Mock extraction starts in Issue #2.</p>
+      <p class="muted">Paste one vendor/source per line. This supports future extraction; guide outputs live in the Buyer Guide Studio.</p>
       <form method="post" action="/runs">
         <label>Title
           <input name="title" value="First-Time Buyer Guide Source Pass" required />
@@ -153,23 +162,21 @@ function renderRun(runId) {
       </div>
       <div class="stacked-actions">
         ${badge(run.status)}
-        <a class="button" href="/runs/new">New run</a>
+        <a class="button primary" href="/studio">Use Guide Studio</a>
       </div>
     </section>
 
     <section class="tabs">
       <a class="active" href="#sources">Sources</a>
       <a href="#worklog">Work Log</a>
-      <span title="Coming in Issue #2">Product Candidates · Issue #2</span>
-      <span title="Coming in Issue #2">Asset Rights · Issue #2</span>
-      <span title="Coming in Issue #2">Guide Blocks · Issue #2</span>
-      <span title="Coming in Issue #2">Output Pack · Issue #2</span>
+      <a href="/studio">Guide Studio</a>
+      <span title="Coming in extraction layer">Live extraction later</span>
     </section>
 
     <section class="panel" id="sources">
       <div class="panel-title">
         <h3>Source Queue</h3>
-        <span class="muted">${sources.length} source${sources.length === 1 ? '' : 's'}</span>
+        <span class="muted">${sources.length} source${sources.length === 1 ? '' : 's'} feeding future extraction</span>
       </div>
       <table>
         <thead>
@@ -235,6 +242,12 @@ async function handleRequest(request, response) {
     return;
   }
 
+  if (request.method === 'GET' && url.pathname === '/studio') {
+    response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    response.end(renderStudioPage(layout));
+    return;
+  }
+
   if (request.method === 'GET' && url.pathname === '/runs/new') {
     response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     response.end(renderNewRun());
@@ -277,4 +290,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { handleRequest, renderDashboard, renderNewRun, renderRun };
+module.exports = { handleRequest, renderDashboard, renderNewRun, renderRun, layout };
