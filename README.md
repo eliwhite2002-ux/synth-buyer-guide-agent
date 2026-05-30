@@ -2,7 +2,7 @@
 
 Internal editorial workflow app for building buyer-guide research queues from source/vendor seed lists.
 
-Issue #1 provides the first working slice: a dark internal dashboard, durable local data, extraction-run creation, queued sources, sample seed import, the required seed run, and work logs. It intentionally does not perform extraction yet.
+The app provides a dark internal dashboard, durable local data, extraction-run creation, queued sources, sample seed import, the required seed run, and work logs. The first extraction adapter is intentionally a mock/unverified adapter: it records submitted URLs and creates review-only evidence records without pretending page contents were fetched or verified.
 
 ## Stack
 
@@ -31,8 +31,11 @@ The test suite verifies:
 - a new run is created through the API;
 - pasted non-empty lines create durable source rows with the required defaults;
 - run creation and source parsing create work-log entries;
-- the broader source list remains available for UI import.
+- the broader source list remains available for UI import;
+- mock URL extraction creates saved evidence, review-only candidate cards, work logs, refreshed guide blocks, and a draft output package.
 
-## Issue #2 Hooks
+## Extraction Adapter
 
-The source queue exposes a disabled mock-extraction action and placeholder run tabs for Product Candidates, Asset Rights, Guide Blocks, and Output Pack. Issue #2 should add mock extraction behind testable adapter functions while clearly marking mock data as unverified.
+The Sources tab accepts a vendor or product URL and routes it through `src/extractors/mock.js`. The mock adapter persists source-linked evidence snippets, creates a candidate card with `needs_review` status, and refreshes the run guide package. Its records are labeled `mock_unverified`. Replace it with real discovery and extraction adapters before treating any field as verified.
+
+Asset Rights remains a placeholder until rights-classification behavior is added.
