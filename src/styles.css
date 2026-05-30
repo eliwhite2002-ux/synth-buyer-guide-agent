@@ -80,5 +80,9 @@ small, .muted { color: var(--muted); }
 .output-pack { display: grid; gap: 18px; }
 .output-block { border: 1px solid var(--border); border-radius: 18px; background: #0e1625; padding: 18px; }
 .output-block pre { white-space: pre-wrap; word-break: break-word; color: #dce7ff; background: #07101d; border: 1px solid #1d2d45; border-radius: 14px; padding: 16px; max-height: 420px; overflow: auto; }
-@media (max-width: 1100px) { .cards, .studio-cards, .mistake-grid, .research-grid { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 900px) { .topbar, .hero { flex-direction: column; align-items: flex-start; } .two-col, .extract-form, .field-list { grid-template-columns: 1fr; } table { display: block; overflow-x: auto; } }
+.image-candidate-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin: 18px 0; }
+.image-candidate-card { border: 1px solid var(--border); border-radius: 18px; background: #0e1625; padding: 16px; }
+.image-candidate-card p { color: var(--muted); line-height: 1.45; }
+.image-candidate-card pre { white-space: pre-wrap; word-break: break-all; color: #dce7ff; background: #07101d; border: 1px solid #1d2d45; border-radius: 12px; padding: 12px; max-height: 130px; overflow: auto; }
+@media (max-width: 1100px) { .cards, .studio-cards, .mistake-grid, .research-grid, .image-candidate-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 900px) { .topbar, .hero { flex-direction: column; align-items: flex-start; } .two-col, .extract-form, .field-list, .image-candidate-grid { grid-template-columns: 1fr; } table { display: block; overflow-x: auto; } }
