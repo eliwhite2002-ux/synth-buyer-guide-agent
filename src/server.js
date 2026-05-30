@@ -7,8 +7,10 @@ const {
   getRun
 } = require('./data');
 const { renderStudioPage } = require('./guideStudio');
+const { extractUrl } = require('./extractor');
 
 const PORT = Number(process.env.PORT || 3000);
+let latestExtractionResult = null;
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -67,7 +69,7 @@ function renderDashboard() {
       <div>
         <p class="eyebrow">Production tool direction</p>
         <h2>Build buyer-guide outputs first</h2>
-        <p>The useful product is the Buyer Guide Studio: article draft, comparison table, graphic briefs, product-card schema, and video hooks. Source queues are supporting infrastructure, not the main event.</p>
+        <p>The useful product is the Buyer Guide Studio: article draft, comparison table, graphic briefs, product-card schema, video hooks, research cards, and extraction tests. Source queues are supporting infrastructure, not the main event.</p>
       </div>
       <a class="button primary" href="/studio">Open Guide Studio</a>
     </section>
@@ -83,7 +85,7 @@ function renderDashboard() {
     <section class="panel two-col">
       <div>
         <h3>Buyer Guide Studio</h3>
-        <p class="muted">Draft guide copy, mistake cards, comparison table, visual briefs, product-card schema, and short-video hooks.</p>
+        <p class="muted">Draft guide copy, mistake cards, comparison table, visual briefs, product-card schema, research cards, extraction tester, and short-video hooks.</p>
         <a class="button primary" href="/studio">Open useful output pack</a>
       </div>
       <div>
@@ -244,7 +246,14 @@ async function handleRequest(request, response) {
 
   if (request.method === 'GET' && url.pathname === '/studio') {
     response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    response.end(renderStudioPage(layout));
+    response.end(renderStudioPage(layout, latestExtractionResult));
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/extract') {
+    const body = await parseBody(request);
+    latestExtractionResult = await extractUrl(body.get('targetUrl'));
+    redirect(response, '/studio#extractor');
     return;
   }
 
