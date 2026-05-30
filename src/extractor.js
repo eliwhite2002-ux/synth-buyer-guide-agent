@@ -26,14 +26,7 @@ async function extractUrl(targetUrl) {
       }
     });
     const html = await response.text();
-    const cleanText = html
-      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/&nbsp;/g, ' ')
-      .replace(/&amp;/g, '&')
-      .replace(/\s+/g, ' ')
-      .trim();
+    const cleanText = htmlToText(html);
 
     const title = matchFirst(html, /<title[^>]*>([\s\S]*?)<\/title>/i);
     const description = matchFirst(html, /<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i) || matchFirst(html, /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i);
@@ -44,6 +37,7 @@ async function extractUrl(targetUrl) {
 
     const detectedFields = detectBuyerGuideFields(cleanText);
     const suggestedLinks = extractSuggestedLinks(html, url).slice(0, 18);
+    const productSpecs = extractProductSpecs({ html, cleanText, title, description, targetUrl: url.toString() });
     const blocker = response.ok ? '' : `HTTP ${response.status} ${response.statusText}`;
 
     return {
@@ -56,6 +50,7 @@ async function extractUrl(targetUrl) {
       description: description || '',
       headings,
       suggestedLinks,
+      productSpecs,
       detectedFields,
       textSample: cleanText.slice(0, 1800),
       startedAt,
@@ -76,16 +71,33 @@ async function extractUrl(targetUrl) {
   }
 }
 
+function htmlToText(html) {
+  return String(html || '')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/<\/p>|<\/li>|<\/div>|<\/h[1-6]>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&#038;/g, '&')
+    .replace(/&#8217;/g, '’')
+    .replace(/&#8211;|&ndash;/g, '–')
+    .replace(/&#8220;|&ldquo;/g, '“')
+    .replace(/&#8221;|&rdquo;/g, '”')
+    .replace(/&quot;/g, '"')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function matchFirst(text, regex) {
   const match = text.match(regex);
   return match ? stripTags(match[1]) : '';
 }
 
 function stripTags(value) {
-  return String(value || '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+  return htmlToText(String(value || ''));
 }
 
 function isJunkLink(url, label = '') {
@@ -166,6 +178,94 @@ function detectBuyerGuideFields(text) {
   };
 }
 
+function extractProductSpecs({ html, cleanText, title, description, targetUrl }) {
+  const specsText = specWindow(cleanText);
+  const priceValues = extractPrices(cleanText);
+  const spec = {
+    productName: title || '',
+    description: description || '',
+    regularPrice: priceValues.regularPrice,
+    salePrice: priceValues.salePrice,
+    price: priceValues.salePrice || priceValues.regularPrice || '',
+    brand: extractLabeledValue(specsText, ['Brand']),
+    body: extractLabeledValue(specsText, ['Body']),
+    head: extractLabeledValue(specsText, ['Head']),
+    collection: extractLabeledValue(specsText, ['Collection']),
+    bodyWeight: extractLabeledValue(specsText, ['Body weight', 'Weight']),
+    height: extractLabeledValue(specsText, ['Height']),
+    material: extractMaterial(cleanText, title, description),
+    imageCandidates: extractImageCandidates(html, targetUrl).slice(0, 8)
+  };
+  return Object.fromEntries(Object.entries(spec).filter(([, value]) => Array.isArray(value) ? value.length : Boolean(value)));
+}
+
+function specWindow(cleanText) {
+  const text = String(cleanText || '');
+  const start = text.toLowerCase().indexOf('default specifications');
+  if (start >= 0) return text.slice(start, start + 1600);
+  return text.slice(0, 2200);
+}
+
+function extractLabeledValue(text, labels) {
+  const stop = '(?:Brand|Body|Head|Collection|Body weight|Weight|Height|Material|Default Specifications|Description|Add to cart|Customize|Shipping|Reviews)';
+  for (const label of labels) {
+    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`${escaped}\\s*:?\\s*([^•\\n]+?)(?=\\s+${stop}\\s*:?|$)`, 'i');
+    const match = String(text || '').match(regex);
+    if (match) return cleanupSpecValue(match[1]);
+  }
+  return '';
+}
+
+function cleanupSpecValue(value) {
+  return String(value || '')
+    .replace(/^[\s:：-]+/, '')
+    .replace(/\s+/g, ' ')
+    .replace(/(?:Add to cart|Customize|Select options).*$/i, '')
+    .trim();
+}
+
+function extractPrices(text) {
+  const matches = [...String(text || '').matchAll(/(?:\$\s*([0-9][0-9,]*(?:\.\d{2})?)|([0-9][0-9,]*(?:\.\d{2})?)\s*\$)/g)]
+    .map((match) => Number(String(match[1] || match[2]).replace(/,/g, '')))
+    .filter((value) => Number.isFinite(value) && value > 50);
+  const unique = [...new Set(matches)].sort((a, b) => a - b);
+  if (!unique.length) return { regularPrice: '', salePrice: '' };
+  const format = (value) => `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return {
+    salePrice: unique[0] ? format(unique[0]) : '',
+    regularPrice: unique.length > 1 ? format(unique[unique.length - 1]) : ''
+  };
+}
+
+function extractMaterial(...values) {
+  const text = values.join(' ').toLowerCase();
+  if (/platinum\s+silicone/.test(text)) return 'Platinum silicone';
+  if (/silicone/.test(text)) return 'Silicone';
+  if (/\btpe\b/.test(text)) return 'TPE';
+  return '';
+}
+
+function extractImageCandidates(html, targetUrl) {
+  const candidates = [];
+  const add = (raw, label = '') => {
+    if (!raw) return;
+    try {
+      const absolute = new URL(raw, targetUrl).toString();
+      if (!/^https?:/i.test(absolute)) return;
+      if (/logo|icon|avatar|sprite|placeholder|data:image/i.test(absolute)) return;
+      if (!candidates.some((item) => item.url === absolute)) candidates.push({ url: absolute, label });
+    } catch {}
+  };
+  for (const match of String(html || '').matchAll(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/gi)) add(match[1], 'og:image');
+  for (const match of String(html || '').matchAll(/<img[^>]+(?:src|data-src|data-large_image)=["']([^"']+)["'][^>]*>/gi)) {
+    const tag = match[0];
+    const alt = matchFirst(tag, /alt=["']([^"']*)["']/i);
+    add(match[1], alt || 'product image');
+  }
+  return candidates;
+}
+
 function estimateUsefulness(lowerText) {
   const signals = ['weight', 'height', 'tpe', 'silicone', 'shipping', 'return', 'warranty', 'clean', 'maintenance', 'price'];
   const score = signals.filter((signal) => lowerText.includes(signal)).length;
@@ -174,4 +274,4 @@ function estimateUsefulness(lowerText) {
   return 'low';
 }
 
-module.exports = { extractUrl, detectBuyerGuideFields, extractSuggestedLinks };
+module.exports = { extractUrl, detectBuyerGuideFields, extractSuggestedLinks, extractProductSpecs };
