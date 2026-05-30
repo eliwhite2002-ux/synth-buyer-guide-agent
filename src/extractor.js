@@ -43,6 +43,7 @@ async function extractUrl(targetUrl) {
       .slice(0, 12);
 
     const detectedFields = detectBuyerGuideFields(cleanText);
+    const suggestedLinks = extractSuggestedLinks(html, url).slice(0, 18);
     const blocker = response.ok ? '' : `HTTP ${response.status} ${response.statusText}`;
 
     return {
@@ -54,6 +55,7 @@ async function extractUrl(targetUrl) {
       title: title || '(no title found)',
       description: description || '',
       headings,
+      suggestedLinks,
       detectedFields,
       textSample: cleanText.slice(0, 1800),
       startedAt,
@@ -86,6 +88,57 @@ function stripTags(value) {
     .trim();
 }
 
+function extractSuggestedLinks(html, baseUrl) {
+  const anchors = [...html.matchAll(/<a\s+[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)];
+  const seen = new Set();
+  const baseHost = baseUrl.hostname.replace(/^www\./, '');
+  const scored = [];
+
+  for (const [, href, labelHtml] of anchors) {
+    let next;
+    try {
+      next = new URL(href, baseUrl);
+    } catch {
+      continue;
+    }
+    if (!['http:', 'https:'].includes(next.protocol)) continue;
+    if (next.hostname.replace(/^www\./, '') !== baseHost) continue;
+    next.hash = '';
+    const normalized = next.toString().replace(/\/$/, '/');
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+
+    const label = stripTags(labelHtml).replace(/\s+/g, ' ').trim() || next.pathname;
+    const score = scoreLink(next, label);
+    if (score <= 0) continue;
+    scored.push({ url: normalized, label, score, kind: classifyLinkKind(next, label) });
+  }
+
+  return scored
+    .sort((a, b) => b.score - a.score)
+    .map(({ url, label, kind }) => ({ url, label, kind }));
+}
+
+function scoreLink(url, label) {
+  const text = `${url.pathname} ${label}`.toLowerCase();
+  let score = 0;
+  if (/product|products|shop|collection|collections|category|categories|doll|body|torso|silicone|tpe|new|best|sale|light|weight|small|mini|teen|adult/.test(text)) score += 4;
+  if (/product|products|shop|collection|collections|category|categories/.test(text)) score += 4;
+  if (/shipping|return|refund|warranty|care|clean|faq|support|contact/.test(text)) score += 2;
+  if (/blog|privacy|terms|login|account|cart|checkout|wishlist|track|currency|language/.test(text)) score -= 4;
+  if (url.pathname === '/' || url.pathname === '') score -= 3;
+  if (url.pathname.split('/').filter(Boolean).length >= 2) score += 1;
+  return score;
+}
+
+function classifyLinkKind(url, label) {
+  const text = `${url.pathname} ${label}`.toLowerCase();
+  if (/shipping|return|refund|warranty|care|clean|faq|support|contact/.test(text)) return 'support_policy';
+  if (/product|products|item|model|doll|body|torso/.test(text) && url.pathname.split('/').filter(Boolean).length >= 2) return 'possible_product';
+  if (/shop|collection|collections|category|categories/.test(text)) return 'possible_category';
+  return 'possible_internal';
+}
+
 function detectBuyerGuideFields(text) {
   const lower = text.toLowerCase();
   return {
@@ -108,4 +161,4 @@ function estimateUsefulness(lowerText) {
   return 'low';
 }
 
-module.exports = { extractUrl, detectBuyerGuideFields };
+module.exports = { extractUrl, detectBuyerGuideFields, extractSuggestedLinks };
