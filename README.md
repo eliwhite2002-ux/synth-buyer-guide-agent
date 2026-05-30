@@ -1,41 +1,38 @@
 # Synth Companions Buyer Guide Agent
 
-Internal editorial workflow app for building Synth Companions buyer guides from source/vendor seed lists.
+Internal editorial workflow app for building buyer-guide research queues from source/vendor seed lists.
 
-This project exists to stop the manual workflow of hunting product pages, copying specs, chasing images, and rebuilding every guide from scratch. The system should start from a vendor/source list, run discovery and extraction, classify confidence and media rights, create structured rows, and generate guide-ready outputs.
+Issue #1 provides the first working slice: a dark internal dashboard, durable local data, extraction-run creation, queued sources, sample seed import, the required seed run, and work logs. It intentionally does not perform extraction yet.
 
-## Core workflow
+## Stack
 
-1. Start from a seed list of vendor/source names or URLs.
-2. Discover official source URL candidates and important internal pages.
-3. Extract available source/product fields.
-4. Classify confidence and access blockers.
-5. Create source rows and product candidate rows.
-6. Classify image/media rights before publication.
-7. Generate guide blocks from verified/probable rows.
-8. Export article markdown, comparison tables, product-card JSON, visual briefs, and short-video hooks.
+The MVP uses dependency-free Node.js and a durable JSON store at `data/store.json`. This keeps setup small and the model explicit while leaving room for extraction adapters in later issues.
 
-## First MVP
+## Run
 
-The first app version should include:
+Requirements: Node.js 20 or newer.
 
-- Dashboard for extraction runs
-- New run form
-- Source queue
-- Product candidates table
-- Asset/media rights tracker
-- Guide block generator
-- Output pack exporter
-- Work log
-- Mock extraction mode
-- Seed run for Zelex Dolls, WM Doll, Irontech Doll, and Tayu Doll
+```powershell
+npm start
+```
 
-## Hard rule
+Open `http://localhost:3000`.
 
-Eli reviews final judgment. Eli does not become the research assistant.
+## Test
 
-The app should escalate only narrow access-wall exceptions after logging what it tried and what is missing.
+```powershell
+npm test
+```
 
-## Status
+The test suite verifies:
 
-Initial repo scaffold for Codex-driven build.
+- the app server starts;
+- `Extraction Run 001` appears with its four required sources;
+- a new run is created through the API;
+- pasted non-empty lines create durable source rows with the required defaults;
+- run creation and source parsing create work-log entries;
+- the broader source list remains available for UI import.
+
+## Issue #2 Hooks
+
+The source queue exposes a disabled mock-extraction action and placeholder run tabs for Product Candidates, Asset Rights, Guide Blocks, and Output Pack. Issue #2 should add mock extraction behind testable adapter functions while clearly marking mock data as unverified.
