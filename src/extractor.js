@@ -93,6 +93,11 @@ function isJunkLink(url, label = '') {
   return /cdn-cgi|email-protection|mailto:|tel:|javascript:|#|wp-json|xmlrpc|feed|rss|my-account|account|login|logout|cart|checkout|wishlist|compare|currency|language|privacy|terms/.test(text);
 }
 
+function isArticleGuideLink(url, label = '') {
+  const text = `${url.pathname} ${label}`.toLowerCase();
+  return /blog|news|guide|article|overview|top-features|features|tutorial|tutorials|factory-videos|videos|pov|feedback/.test(text);
+}
+
 function extractSuggestedLinks(html, baseUrl) {
   const anchors = [...html.matchAll(/<a\s+[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)];
   const seen = new Set();
@@ -130,6 +135,7 @@ function scoreLink(url, label) {
   let score = 0;
   if (/product-category|shop|collection|collections|category|categories/.test(text)) score += 7;
   if (/product|products|doll|body|torso|silicone|tpe|new|best|sale|light|weight|small|mini|adult/.test(text)) score += 4;
+  if (isArticleGuideLink(url, label)) score -= 3;
   if (/shipping|return|refund|warranty|care|clean|faq|support|contact/.test(text)) score += 2;
   if (/blog|privacy|terms|login|account|cart|checkout|wishlist|track|currency|language|cdn-cgi|email-protection/.test(text)) score -= 8;
   if (url.pathname === '/' || url.pathname === '') score -= 3;
@@ -140,7 +146,7 @@ function scoreLink(url, label) {
 function classifyLinkKind(url, label) {
   const text = `${url.pathname} ${label}`.toLowerCase();
   if (/shipping|return|refund|warranty|care|clean|faq|support|contact/.test(text)) return 'support_policy';
-  if (/blog|news|guide|article/.test(text)) return 'article_guide';
+  if (isArticleGuideLink(url, label)) return 'article_guide';
   if (/product-category|shop|collection|collections|category|categories/.test(text)) return 'likely_category';
   if (/product|products|item|model|doll|body|torso/.test(text) && url.pathname.split('/').filter(Boolean).length >= 2) return 'likely_product';
   return 'unknown';
