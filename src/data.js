@@ -190,6 +190,7 @@ function saveExtractionResult(result) {
   const fields = positiveDetectedFields(detected);
   const urlClass = classifyUrl(sourceUrl);
   const evidenceKind = urlClass.isLikelyProduct ? 'product_candidate' : 'vendor_source';
+  const suggestedLinks = Array.isArray(result.suggestedLinks) ? result.suggestedLinks : [];
 
   const existingRecord = db.researchRecords.find((record) => canonicalUrl(record.sourceUrl) === sourceUrl);
   const record = {
@@ -199,6 +200,7 @@ function saveExtractionResult(result) {
     sourceUrl,
     adapter: 'live_fetch',
     evidenceKind,
+    suggestedLinks,
     extractedAt,
     confidence,
     verificationStatus,
@@ -223,7 +225,7 @@ function saveExtractionResult(result) {
     source.extractableFields = fields.join(', ') || 'none detected';
     source.blockers = blocker;
     source.nextAction = readableEvidence
-      ? (urlClass.isLikelyProduct ? 'Review product evidence, verify specs, and classify media rights.' : 'Vendor/source page captured. Next: discover category and product URLs before creating product cards.')
+      ? (urlClass.isLikelyProduct ? 'Review product evidence, verify specs, and classify media rights.' : 'Vendor/source page captured. Next: use suggested internal links to extract category and product URLs.')
       : 'Try a reader/browser extraction or a specific product/category URL; this page did not expose readable evidence.';
   }
 
