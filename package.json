@@ -1,0 +1,13 @@
+{
+  "name": "synth-buyer-guide-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Internal editorial extraction-run dashboard",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
