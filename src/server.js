@@ -52,6 +52,10 @@ function createServer({ store = new Store() } = {}) {
       if (request.method === "POST" && url.pathname === "/api/runs") {
         return sendJson(response, 201, store.createRun(await readJson(request)));
       }
+      if (request.method === "POST" && url.pathname.match(/^\/api\/runs\/[^/]+\/extract-url$/)) {
+        const runId = decodeURIComponent(url.pathname.split("/")[3]);
+        return sendJson(response, 201, store.extractUrl({ runId, ...(await readJson(request)) }));
+      }
       if (request.method === "GET" && url.pathname.startsWith("/api/runs/")) {
         const run = store.getRun(decodeURIComponent(url.pathname.slice("/api/runs/".length)));
         return sendJson(response, run ? 200 : 404, run || { error: "Run not found." });
