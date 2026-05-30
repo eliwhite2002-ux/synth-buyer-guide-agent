@@ -3,6 +3,7 @@ process.env.SBGA_DB_PATH = path.join(__dirname, 'tmp-test-db.json');
 const assert = require('assert');
 const fs = require('fs');
 const { buildSeedDatabase, createExtractionRun, getDashboard, getResearchState, getRun, parseSeedList, saveDatabase, saveExtractionResult } = require('../src/data');
+const { fullArticleMarkdown, renderBuilderPage } = require('../src/guideBuilder');
 function resetDatabase() { saveDatabase(buildSeedDatabase()); }
 function cleanup() { if (fs.existsSync(process.env.SBGA_DB_PATH)) fs.unlinkSync(process.env.SBGA_DB_PATH); }
 function fixture(targetUrl, overrides = {}) { return { ok: true, targetUrl, title: 'Model One', description: 'Silicone product with weight, shipping, and care details.', headings: ['Model One'], detectedFields: { mentionsWeight: true, mentionsMaterial: true, mentionsShipping: true }, textSample: 'Model One silicone weight shipping care', completedAt: new Date().toISOString(), ...overrides }; }
@@ -20,8 +21,10 @@ function runTests() {
   const category = saveExtractionResult(fixture('https://example.com/product-category/silicone', { title: 'Silicone Collection' })); assert.strictEqual(category.candidate.candidateKind, 'category_candidate'); assert.strictEqual(category.candidate.recommendationStatus, 'not_recommended'); assert.strictEqual(category.guidePackage.productCards.length, 1); assert.strictEqual(category.guidePackage.categoryLeadCount, 1);
   const beforeGuide = getResearchState().productCandidates.length; const guide = saveExtractionResult(fixture('https://example.com/guide/first-time-buyers', { title: 'First-time buyer guide' })); assert.strictEqual(guide.candidate, null); assert.strictEqual(getResearchState().productCandidates.length, beforeGuide);
   const research = getResearchState(); assert.strictEqual(research.researchRecords.length, 3); assert.strictEqual(research.productCandidates.length, 2); assert.strictEqual(research.guidePackage.evidenceRecordCount, 3); assert.strictEqual(research.guidePackage.productCards.length, 1); assert.strictEqual(research.guidePackage.comparisonRows.length, 1); assert(!research.guidePackage.articleInsert.includes('Silicone Collection'));
+  const article = fullArticleMarkdown(research); assert(article.includes('Product example: Model One')); assert(article.includes('AI and Robotics: Do Not Start There')); assert(article.includes('Status: needs_review, not_recommended yet'));
+  const builderHtml = renderBuilderPage((title, body) => `${title}\n${body}`, research); assert(builderHtml.includes('Copy-ready Guide Package')); assert(builderHtml.includes('Product Example Cards')); assert(builderHtml.includes('Publication Review Checklist')); assert(builderHtml.includes('Model One'));
   const appDbPath = path.join(__dirname, '..', 'data', 'app-db.json'); if (fs.existsSync(appDbPath)) { const appDb = JSON.parse(fs.readFileSync(appDbPath, 'utf8')); assert.strictEqual(JSON.stringify(appDb).includes('example.com/product/model-one'), false, 'test fixture must not leak into data/app-db.json'); }
   const server = require('../src/server'); assert.strictEqual(typeof server.renderDashboard, 'function'); if (!fs.existsSync(path.join(__dirname, '..', 'src', 'styles.css'))) throw new Error('styles.css should exist');
-  cleanup(); console.log('7 tests passed'); console.log('Product output pack excludes category leads');
+  cleanup(); console.log('8 tests passed'); console.log('Guide Builder produces copy-ready outputs and excludes category leads from product examples');
 }
 runTests();
