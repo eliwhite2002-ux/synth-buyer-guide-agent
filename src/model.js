@@ -41,10 +41,17 @@ function createSource({ id, runId, name }) {
   };
 }
 
+function normalizeUrl(value) {
+  const url = new URL(String(value || "").trim());
+  if (!["http:", "https:"].includes(url.protocol)) throw new Error("Use an HTTP or HTTPS URL.");
+  return url.toString();
+}
+
 module.exports = {
   GUIDE_TYPES,
   NEXT_ACTION,
   SOURCE_STATUSES,
   createSource,
+  normalizeUrl,
   parseSeedList,
 };
