@@ -82,6 +82,10 @@ function htmlToText(html) {
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
     .replace(/&#038;/g, '&')
+    .replace(/&#36;|&dollar;/g, '$')
+    .replace(/&#165;|&yen;/g, '¥')
+    .replace(/&#163;|&pound;/g, '£')
+    .replace(/&#8364;|&euro;/g, '€')
     .replace(/&#8217;/g, '’')
     .replace(/&#8211;|&ndash;/g, '–')
     .replace(/&#8220;|&ldquo;/g, '“')
@@ -207,14 +211,24 @@ function specWindow(cleanText) {
 }
 
 function extractLabeledValue(text, labels) {
-  const stop = '(?:Brand|Body|Head|Collection|Body weight|Weight|Height|Material|Default Specifications|Description|Add to cart|Customize|Shipping|Reviews)';
+  const stopLabels = [
+    'Brand', 'Body', 'Head', 'Collection', 'Body weight', 'Weight', 'Height', 'Material',
+    'Shoulders', 'Arms length', 'Hands length', 'Leg length', 'Thigh girth', 'Calf girth',
+    'Bust', 'Under Bust', 'Hips', 'Waist', 'Foot length', 'Anal depth', 'Vaginal depth',
+    'Default Specifications', 'Description', 'Add to cart', 'Customize', 'Shipping', 'Reviews'
+  ];
+  const stop = `(?:${stopLabels.map(escapeRegExp).join('|')})`;
   for (const label of labels) {
-    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escaped = escapeRegExp(label);
     const regex = new RegExp(`${escaped}\\s*:?\\s*([^•\\n]+?)(?=\\s+${stop}\\s*:?|$)`, 'i');
     const match = String(text || '').match(regex);
     if (match) return cleanupSpecValue(match[1]);
   }
   return '';
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function cleanupSpecValue(value) {
@@ -226,7 +240,7 @@ function cleanupSpecValue(value) {
 }
 
 function extractPrices(text) {
-  const matches = [...String(text || '').matchAll(/(?:\$\s*([0-9][0-9,]*(?:\.\d{2})?)|([0-9][0-9,]*(?:\.\d{2})?)\s*\$)/g)]
+  const matches = [...String(text || '').matchAll(/(?:[$€£¥]\s*([0-9][0-9,]*(?:\.\d{2})?)|([0-9][0-9,]*(?:\.\d{2})?)\s*[$€£¥])/g)]
     .map((match) => Number(String(match[1] || match[2]).replace(/,/g, '')))
     .filter((value) => Number.isFinite(value) && value > 50);
   const unique = [...new Set(matches)].sort((a, b) => a - b);
